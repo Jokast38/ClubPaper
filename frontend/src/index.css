@@ -1,0 +1,126 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=DM+Sans:wght@400;500;600;700&display=swap');
+
+:root {
+  --font-heading: 'Outfit', system-ui, sans-serif;
+  --font-body: 'DM Sans', system-ui, sans-serif;
+  --club-primary: #EA580C;
+  --club-secondary: #0F172A;
+  --club-accent: #FACC15;
+  --club-primary-soft: #FFEDD5;
+
+  --background: 210 40% 98%;
+  --foreground: 222 47% 11%;
+  --card: 0 0% 100%;
+  --card-foreground: 222 47% 11%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 222 47% 11%;
+  --primary: 22 92% 48%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 210 40% 96%;
+  --secondary-foreground: 222 47% 11%;
+  --muted: 210 40% 96%;
+  --muted-foreground: 215 16% 47%;
+  --accent: 210 40% 96%;
+  --accent-foreground: 222 47% 11%;
+  --destructive: 0 72% 51%;
+  --destructive-foreground: 0 0% 98%;
+  --border: 214 32% 91%;
+  --input: 214 32% 91%;
+  --ring: 22 92% 48%;
+  --radius: 0.75rem;
+}
+
+* { border-color: hsl(var(--border)); }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  font-family: var(--font-body);
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3, h4, .font-display {
+  font-family: var(--font-heading);
+  letter-spacing: -0.02em;
+}
+
+.club-primary { color: var(--club-primary); }
+.bg-club-primary { background-color: var(--club-primary); }
+.bg-club-primary-soft { background-color: var(--club-primary-soft); }
+.border-club-primary { border-color: var(--club-primary); }
+.ring-club-primary { --tw-ring-color: var(--club-primary); }
+
+.btn-club {
+  background-color: var(--club-primary);
+  color: white;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease;
+}
+.btn-club:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 24px -8px var(--club-primary);
+  filter: brightness(1.05);
+}
+
+.paper-card {
+  background: white;
+  border: 1px solid hsl(var(--border));
+  border-radius: 1rem;
+}
+
+/* subtle stadium grain overlay for landing */
+.stadium-grain {
+  background-image:
+    radial-gradient(1200px 500px at 15% -10%, rgba(234, 88, 12, 0.08), transparent 60%),
+    radial-gradient(1000px 500px at 100% 0%, rgba(15, 23, 42, 0.05), transparent 60%);
+}
+
+.pill-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 12px;
+  border-radius: 9999px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.status-paid   { background: #DCFCE7; color: #15803D; border: 1px solid #86EFAC; }
+.status-pending{ background: #FEF9C3; color: #A16207; border: 1px solid #FDE047; }
+.status-overdue{ background: #FEE2E2; color: #B91C1C; border: 1px solid #FCA5A5; }
+
+.fade-in { animation: fadeIn 0.3s ease-out; }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+
+.stagger > * { opacity: 0; animation: fadeIn 0.4s ease-out forwards; }
+.stagger > *:nth-child(1) { animation-delay: 0.05s; }
+.stagger > *:nth-child(2) { animation-delay: 0.1s; }
+.stagger > *:nth-child(3) { animation-delay: 0.15s; }
+.stagger > *:nth-child(4) { animation-delay: 0.2s; }
+.stagger > *:nth-child(5) { animation-delay: 0.25s; }
+.stagger > *:nth-child(6) { animation-delay: 0.3s; }
+
+/* safe area for bottom tabs on mobile */
+.pb-tabs { padding-bottom: calc(84px + env(safe-area-inset-bottom, 0px)); }
+
+/* TipTap editor */
+.ProseMirror:focus { outline: none; }
+.ProseMirror p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  color: #94a3b8;
+  pointer-events: none;
+  height: 0;
+}
+.ProseMirror ul { list-style: disc; padding-left: 1.5rem; }
+.ProseMirror ol { list-style: decimal; padding-left: 1.5rem; }
+.ProseMirror h2 { font-family: var(--font-heading); font-size: 1.5rem; font-weight: 700; margin: 1rem 0 0.5rem; }
+.ProseMirror h3 { font-family: var(--font-heading); font-size: 1.2rem; font-weight: 700; margin: 0.8rem 0 0.4rem; }
+.ProseMirror blockquote { border-left: 3px solid var(--club-primary); padding-left: 12px; color: #475569; font-style: italic; }
+.ProseMirror hr { border: none; border-top: 2px solid #e2e8f0; margin: 1rem 0; }
+.ProseMirror a { color: var(--club-primary); text-decoration: underline; }
