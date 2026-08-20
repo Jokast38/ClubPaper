@@ -127,7 +127,10 @@ async def connect(user: dict = Depends(current_user)):
     cfg, redirect_uri = _client_config()
     if not cfg:
         raise HTTPException(500, "Google Agenda n'est pas configuré sur la plateforme (clés manquantes).")
-    flow = Flow.from_client_config(cfg, scopes=SCOPES, redirect_uri=redirect_uri)
+    # autogenerate_code_verifier disabled: connect() and callback() use separate,
+    # unrelated Flow instances (no shared session), so a PKCE code_verifier
+    # generated here would never reach the token exchange in callback() below.
+    flow = Flow.from_client_config(cfg, scopes=SCOPES, redirect_uri=redirect_uri, autogenerate_code_verifier=False)
     authorization_url, _ = flow.authorization_url(
         access_type="offline", include_granted_scopes="true", prompt="consent", state=club["id"],
     )
