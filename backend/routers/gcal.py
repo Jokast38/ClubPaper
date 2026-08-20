@@ -122,6 +122,24 @@ async def status(user: dict = Depends(current_user)):
     }
 
 
+@router.post("/resync")
+async def resync(user: dict = Depends(current_user)):
+    """Push all upcoming sessions to Google Calendar — catches up sessions
+    created before Drive/Calendar was connected or before the API was enabled."""
+    club = await get_user_club(user)
+    db = get_db()
+    now = datetime.now(timezone.utc).isoformat()
+    sessions = await db.sessions.find({"club_id": club["id"], "start_at": {"$gte": now}}, {"_id": 0}).to_list(1000)
+    synced = 0
+    for s in sessions:
+        before = s.get("google_event_id")
+        await sync_session_upsert(club, s)
+        updated = await db.sessions.find_one({"id": s["id"]}, {"_id": 0, "google_event_id": 1})
+        if updated and updated.get("google_event_id"):
+            synced += 1
+    return {"total": len(sessions), "synced": synced}
+
+
 @router.get("/connect")
 async def connect(user: dict = Depends(current_user)):
     from google_auth_oauthlib.flow import Flow

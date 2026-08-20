@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
-import { CalendarDays, CheckCircle2, XCircle } from "lucide-react";
+import { CalendarDays, CheckCircle2, XCircle, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { GoogleCalendarIcon } from "@/components/GoogleIcons";
 
@@ -32,6 +32,16 @@ export default function CalendarSyncPanel() {
       toast.error(e.response?.data?.detail || "Impossible de démarrer la connexion");
       setBusy(false);
     }
+  };
+
+  const resync = async () => {
+    setBusy(true);
+    try {
+      const { data } = await api.post("/calendar/resync");
+      toast.success(`${data.synced}/${data.total} créneau(x) à venir synchronisé(s)`);
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Impossible de resynchroniser");
+    } finally { setBusy(false); }
   };
 
   const disconnect = async () => {
@@ -77,9 +87,14 @@ export default function CalendarSyncPanel() {
           </Button>
         )}
         {status.club_connected && (
-          <Button variant="outline" onClick={disconnect} disabled={busy} className="rounded-full h-11 text-red-600 hover:text-red-700" data-testid="calendar-disconnect-btn">
-            Déconnecter
-          </Button>
+          <>
+            <Button variant="outline" onClick={resync} disabled={busy} className="rounded-full h-11" data-testid="calendar-resync-btn">
+              <RefreshCw size={16} className="mr-2" />Resynchroniser le planning
+            </Button>
+            <Button variant="outline" onClick={disconnect} disabled={busy} className="rounded-full h-11 text-red-600 hover:text-red-700" data-testid="calendar-disconnect-btn">
+              Déconnecter
+            </Button>
+          </>
         )}
         {!status.platform_configured && (
           <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-3">
