@@ -13,7 +13,14 @@ from deps import current_user, get_user_club
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/drive", tags=["drive"])
 
-SCOPES = ["https://www.googleapis.com/auth/drive"]
+SCOPES = ["https://www.googleapis.com/auth/drive.file"]
+# drive.file (restricted, not sensitive) grants access only to files this app creates
+# itself or that the user explicitly opens via a Google Picker — not the whole Drive.
+# Chosen over the full "drive" scope to avoid Google's mandatory paid security
+# assessment for verification. list_files()/import_from_drive() below can only see
+# app-created files or Picker-selected ones under this scope; they're not currently
+# wired to any frontend UI, so this has no effect on the shipped Drive integration
+# (document import via file upload, receipt export to the "ClubPaper - <club>" folder).
 
 
 def _client_config():
