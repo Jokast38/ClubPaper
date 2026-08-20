@@ -1,4 +1,5 @@
 """Shared FastAPI dependencies + helpers."""
+import os
 import re
 from datetime import datetime
 from typing import Optional
@@ -6,6 +7,17 @@ from fastapi import HTTPException, Request
 
 from auth_utils import get_current_user
 from database import get_db
+
+
+def frontend_url() -> str:
+    """Return a single, clean frontend origin from FRONTEND_URL.
+
+    Defensive against misconfiguration (e.g. a comma-separated list like
+    CORS_ORIGINS accidentally pasted here) — always returns exactly one
+    trimmed, slash-free origin so OAuth redirect URLs never come out mangled.
+    """
+    raw = (os.environ.get("FRONTEND_URL") or "").split(",")[0].strip().rstrip("/")
+    return raw
 
 
 def slugify(text: str) -> str:

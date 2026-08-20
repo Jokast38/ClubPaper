@@ -7,7 +7,7 @@ from fastapi import APIRouter, HTTPException, Depends, Query
 from fastapi.responses import RedirectResponse
 
 from database import get_db
-from deps import current_user, get_user_club
+from deps import current_user, get_user_club, frontend_url
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/calendar", tags=["calendar"])
@@ -183,8 +183,7 @@ async def callback(code: str = Query(...), state: str = Query(...)):
         }},
         upsert=True,
     )
-    front = os.environ.get("FRONTEND_URL", "")
-    return RedirectResponse(url=f"{front}/app/parametres?calendar_connected=1")
+    return RedirectResponse(url=f"{frontend_url()}/app/parametres?calendar_connected=1")
 
 
 @router.post("/disconnect")

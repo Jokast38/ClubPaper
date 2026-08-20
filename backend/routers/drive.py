@@ -8,7 +8,7 @@ from fastapi import APIRouter, HTTPException, Depends, Query, UploadFile, File
 from fastapi.responses import RedirectResponse, Response as FastAPIResponse
 
 from database import get_db
-from deps import current_user, get_user_club
+from deps import current_user, get_user_club, frontend_url
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/drive", tags=["drive"])
@@ -158,8 +158,7 @@ async def callback(code: str = Query(...), state: str = Query(...)):
         }},
         upsert=True,
     )
-    front = os.environ.get("FRONTEND_URL", "")
-    return RedirectResponse(url=f"{front}/app/parametres?drive_connected=1")
+    return RedirectResponse(url=f"{frontend_url()}/app/parametres?drive_connected=1")
 
 
 @router.post("/disconnect")
