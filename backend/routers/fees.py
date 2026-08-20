@@ -143,55 +143,64 @@ async def send_all_reminders(user: dict = Depends(current_user)):
 @router.post("/payments/checkout")
 async def create_checkout(req: CheckoutRequest, request: Request):
     db = get_db()
-    if req.fee_id:
-        fee = await db.fees.find_one({"id": req.fee_id}, {"_id": 0})
-        if not fee:
-            raise HTTPException(404, "Cotisation introuvable")
-        club = await db.clubs.find_one({"id": fee["club_id"]}, {"_id": 0})
-        member = await db.members.find_one({"id": fee["member_id"]}, {"_id": 0})
-        amount_cents = int(round(fee["amount"] * 100))
-        session = stripe.checkout.Session.create(
-            line_items=[{
-                "price_data": {
-                    "currency": "eur",
-                    "product_data": {"name": f"Cotisation {club['name']} - {member['first_name']} {member['last_name']}"},
-                    "unit_amount": amount_cents,
-                }, "quantity": 1,
-            }],
-            mode="payment",
-            success_url=f"{req.origin_url}/payment/success?session_id={{CHECKOUT_SESSION_ID}}",
-            cancel_url=f"{req.origin_url}/payment/cancel",
-            metadata={"fee_id": req.fee_id, "club_id": club["id"]},
-        )
-        await db.payment_transactions.insert_one(serialize(PaymentTransaction(
-            session_id=session.id, club_id=club["id"], fee_id=req.fee_id,
-            amount=fee["amount"], currency="eur",
-        )))
-        await db.fees.update_one({"id": req.fee_id}, {"$set": {"stripe_session_id": session.id}})
-        return {"checkout_url": session.url, "session_id": session.id}
+    try:
+        if req.fee_id:
+            fee = await db.fees.find_one({"id": req.fee_id}, {"_id": 0})
+            if not fee:
+                raise HTTPException(404, "Cotisation introuvable")
+            club = await db.clubs.find_one({"id": fee["club_id"]}, {"_id": 0})
+            member = await db.members.find_one({"id": fee["member_id"]}, {"_id": 0})
+            amount_cents = int(round(fee["amount"] * 100))
+            session = stripe.checkout.Session.create(
+                line_items=[{
+                    "price_data": {
+                        "currency": "eur",
+                        "product_data": {"name": f"Cotisation {club['name']} - {member['first_name']} {member['last_name']}"},
+                        "unit_amount": amount_cents,
+                    }, "quantity": 1,
+                }],
+                mode="payment",
+                success_url=f"{req.origin_url}/payment/success?session_id={{CHECKOUT_SESSION_ID}}",
+                cancel_url=f"{req.origin_url}/payment/cancel",
+                metadata={"fee_id": req.fee_id, "club_id": club["id"]},
+            )
+            await db.payment_transactions.insert_one(serialize(PaymentTransaction(
+                session_id=session.id, club_id=club["id"], fee_id=req.fee_id,
+                amount=fee["amount"], currency="eur",
+            )))
+            await db.fees.update_one({"id": req.fee_id}, {"$set": {"stripe_session_id": session.id}})
+            return {"checkout_url": session.url, "session_id": session.id}
 
-    if req.lookup_key:
-        user = await current_user(request)
-        club = await get_user_club(user)
-        prices = stripe.Price.list(lookup_keys=[req.lookup_key], active=True, limit=1).data
-        if not prices:
-            raise HTTPException(400, f"Tarif Stripe introuvable ({req.lookup_key}). Vérifiez que STRIPE_SECRET_KEY est configuré côté serveur.")
-        price = prices[0]
-        session = stripe.checkout.Session.create(
-            line_items=[{"price": price.id, "quantity": 1}],
-            mode="subscription" if price.recurring else "payment",
-            success_url=f"{req.origin_url}/payment/success?session_id={{CHECKOUT_SESSION_ID}}",
-            cancel_url=f"{req.origin_url}/payment/cancel",
-            metadata={"club_id": club["id"], "user_id": user["id"], "lookup_key": req.lookup_key},
-        )
-        await db.payment_transactions.insert_one(serialize(PaymentTransaction(
-            session_id=session.id, club_id=club["id"], user_id=user["id"],
-            lookup_key=req.lookup_key,
-            amount=(price.unit_amount or 0) / 100, currency=price.currency,
-        )))
-        return {"checkout_url": session.url, "session_id": session.id}
+        if req.lookup_key:
+            user = await current_user(request)
+            club = await get_user_club(user)
+            prices = stripe.Price.list(lookup_keys=[req.lookup_key], active=True, limit=1).data
+            if not prices:
+                raise HTTPException(400, f"Tarif Stripe introuvable ({req.lookup_key}). Vérifiez que STRIPE_SECRET_KEY est configuré côté serveur.")
+            price = prices[0]
+            session = stripe.checkout.Session.create(
+                line_items=[{"price": price.id, "quantity": 1}],
+                mode="subscription" if price.recurring else "payment",
+                success_url=f"{req.origin_url}/payment/success?session_id={{CHECKOUT_SESSION_ID}}",
+                cancel_url=f"{req.origin_url}/payment/cancel",
+                metadata={"club_id": club["id"], "user_id": user["id"], "lookup_key": req.lookup_key},
+            )
+            await db.payment_transactions.insert_one(serialize(PaymentTransaction(
+                session_id=session.id, club_id=club["id"], user_id=user["id"],
+                lookup_key=req.lookup_key,
+                amount=(price.unit_amount or 0) / 100, currency=price.currency,
+            )))
+            return {"checkout_url": session.url, "session_id": session.id}
 
-    raise HTTPException(400, "fee_id ou lookup_key requis")
+        raise HTTPException(400, "fee_id ou lookup_key requis")
+    except HTTPException:
+        raise
+    except stripe.error.StripeError as e:
+        logger.error("Stripe checkout failed: %s", e)
+        raise HTTPException(502, f"Erreur Stripe : {e.user_message or str(e)}")
+    except Exception as e:
+        logger.error("Checkout failed: %s", e)
+        raise HTTPException(500, "Impossible de créer la session de paiement")
 
 
 @router.get("/payments/status/{session_id}")
