@@ -9,7 +9,7 @@ const STEPS = [
     route: "/app",
     target: "body",
     placement: "center",
-    disableBeacon: true,
+    skipBeacon: true,
     content: (
       <div>
         <h3 className="font-display font-bold text-xl text-slate-900">Bienvenue sur ClubPaper 🎉</h3>
@@ -93,7 +93,7 @@ export default function OnboardingTour() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [run, stepIndex]);
 
-  const onCallback = (data) => {
+  const onEvent = (data) => {
     const { status, type, index, action } = data;
     if ([STATUS.FINISHED, STATUS.SKIPPED].includes(status)) {
       setRun(false);
@@ -113,20 +113,19 @@ export default function OnboardingTour() {
       run={run}
       stepIndex={stepIndex}
       continuous
-      showProgress
-      showSkipButton
       scrollToFirstStep
-      disableScrolling={false}
-      callback={onCallback}
+      onEvent={onEvent}
       locale={{ back: "Retour", close: "Fermer", last: "Terminer", next: "Suivant", skip: "Passer" }}
+      options={{
+        primaryColor: "var(--club-primary)",
+        zIndex: 10000,
+        textColor: "#0f172a",
+        arrowColor: "#ffffff",
+        showProgress: true,
+        buttons: ["back", "close", "primary", "skip"],
+      }}
       styles={{
-        options: {
-          primaryColor: "var(--club-primary)",
-          zIndex: 10000,
-          textColor: "#0f172a",
-          arrowColor: "#ffffff",
-        },
-        buttonNext: { borderRadius: 999, padding: "8px 18px", fontWeight: 600 },
+        buttonPrimary: { borderRadius: 999, padding: "8px 18px", fontWeight: 600 },
         buttonBack: { color: "#475569" },
         buttonSkip: { color: "#94a3b8" },
         tooltip: { borderRadius: 16, padding: 20 },

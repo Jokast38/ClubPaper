@@ -101,6 +101,27 @@ def welcome_html(name: str) -> str:
 """
 
 
+def club_ready_html(club: dict, public_url: str) -> str:
+    logo = club.get("logo_data_url") or ""
+    logo_block = (
+        f'<img src="{logo}" alt="{club.get("name","")}" style="width:72px;height:72px;border-radius:16px;object-fit:contain;background:#F8FAFC;padding:6px;margin-bottom:16px;" />'
+        if logo else ""
+    )
+    return f"""
+<div style="font-family: -apple-system, sans-serif; max-width: 560px; margin: 0 auto; padding: 24px; color: #0f172a; text-align: center;">
+  {logo_block}
+  <h2 style="color: #ea580c; margin: 0 0 12px;">Bravo, {club.get('name','')} est prêt ! 🎉</h2>
+  <p style="text-align: left;">Votre club <b>{club.get('name','')}</b> ({club.get('sport','')}{f", {club.get('city')}" if club.get('city') else ""}) est maintenant configuré sur ClubPaper. Vous pouvez ajouter vos adhérents, générer vos cotisations et planifier vos créneaux dès maintenant.</p>
+  <p style="text-align: left;">Votre page publique est déjà en ligne — partagez-la pour attirer de nouveaux adhérents :</p>
+  <p style="margin: 24px 0;">
+    <a href="{public_url}" style="background: #ea580c; color: white; padding: 14px 28px; text-decoration: none; border-radius: 12px; font-weight: 600; display: inline-block;">Voir la page de {club.get('name','')}</a>
+  </p>
+  <p style="color: #64748b; font-size: 14px; text-align: left;">Vous bénéficiez d'un essai gratuit de 30 jours, sans carte bancaire.</p>
+  <p style="color: #64748b; font-size: 14px;">L'équipe ClubPaper</p>
+</div>
+"""
+
+
 def new_prospect_html(club_name: str, prospect: dict) -> str:
     return f"""
 <div style="font-family: -apple-system, sans-serif; max-width: 560px; margin: 0 auto; padding: 24px; color: #0f172a;">

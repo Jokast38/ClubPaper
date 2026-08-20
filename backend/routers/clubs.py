@@ -1,11 +1,13 @@
 """Clubs, integrations, season settings, prospects (admin), reminders/SMS test."""
+import asyncio
 from datetime import datetime, timezone, timedelta
 from fastapi import APIRouter, HTTPException, Depends
 from models import ClubCreate, Club, ClubUpdate, ClubTheme, Prospect, ClubIntegrations, Member
 from database import get_db
-from deps import current_user, get_user_club, serialize, slugify, unique_club_slug
+from deps import current_user, get_user_club, serialize, slugify, unique_club_slug, frontend_url
 from sms_utils import send_sms, format_phone
 from scheduler_jobs import run_fee_reminders, run_season_reminders
+from email_utils import send_email, club_ready_html
 
 router = APIRouter(tags=["clubs"])
 
@@ -27,6 +29,9 @@ async def create_club(data: ClubCreate, user: dict = Depends(current_user)):
     doc["theme"] = club.theme.model_dump()
     await db.clubs.insert_one(doc)
     await db.users.update_one({"id": user["id"]}, {"$set": {"club_id": club.id}})
+    to = club.email or user.get("email", "")
+    public_url = f"{frontend_url()}/c/{club.slug}"
+    asyncio.create_task(send_email(to, f"Bravo, {club.name} est prêt ! 🎉", club_ready_html(doc, public_url), club_id=club.id, kind="club_ready"))
     return club.model_dump()
 
 
