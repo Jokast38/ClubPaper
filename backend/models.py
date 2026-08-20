@@ -35,6 +35,7 @@ class User(BaseModel):
     club_id: Optional[str] = None
     member_id: Optional[str] = None  # if role=member, links to Member record
     tour_seen: bool = False  # onboarding tour already shown — persisted so it doesn't reappear on another device
+    tour_enabled: bool = True  # whether the guided tour is allowed to auto-start on first /app visit
     created_at: datetime = Field(default_factory=_now)
 
 

@@ -106,3 +106,10 @@ async def mark_tour_seen(user: dict = Depends(current_user)):
 async def reset_tour(user: dict = Depends(current_user)):
     await get_db().users.update_one({"id": user["id"]}, {"$set": {"tour_seen": False}})
     return {"ok": True}
+
+
+@router.post("/tour-toggle")
+async def toggle_tour(payload: dict, user: dict = Depends(current_user)):
+    enabled = bool(payload.get("enabled", True))
+    await get_db().users.update_one({"id": user["id"]}, {"$set": {"tour_enabled": enabled}})
+    return {"tour_enabled": enabled}

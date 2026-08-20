@@ -48,7 +48,6 @@ function Private({ children, needsClub = true }) {
 function Shell({ children }) {
   return (
     <AppShell>
-      <OnboardingTour />
       {children}
     </AppShell>
   );
@@ -59,6 +58,7 @@ function App() {
     <BrowserRouter>
       <AuthProvider>
         <ThemeSync />
+        <OnboardingTour />
         <Toaster position="top-center" richColors />
         <Routes>
           <Route path="/" element={<Landing />} />

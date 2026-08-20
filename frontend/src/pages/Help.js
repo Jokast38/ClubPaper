@@ -3,8 +3,13 @@ import { Link } from "react-router-dom";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 import { Search, Users, Wallet, CalendarDays, Megaphone, HardDrive, Newspaper, Settings as SettingsIcon, PlayCircle, MessageCircle, Mail, ArrowRight } from "lucide-react";
 import { startTour } from "@/components/OnboardingTour";
+import { useAuth } from "@/lib/AuthContext";
+import { api } from "@/lib/api";
+import { toast } from "sonner";
 
 // Screenshots (captured from the actual app, stored under public/help/)
 const SHOT = (name) => `/help/${name}`;
@@ -109,8 +114,20 @@ const FAQ = [
 ];
 
 export default function Help() {
+  const { user, refresh } = useAuth() || {};
   const [q, setQ] = useState("");
   const [open, setOpen] = useState(SECTIONS[0].id);
+  const tourEnabled = user?.tour_enabled !== false;
+
+  const onToggleTour = async (checked) => {
+    try {
+      await api.post("/auth/tour-toggle", { enabled: checked });
+      await refresh?.();
+      toast.success(checked ? "Tutoriel automatique activé" : "Tutoriel automatique désactivé");
+    } catch {
+      toast.error("Impossible de mettre à jour ce réglage");
+    }
+  };
 
   const results = useMemo(() => {
     if (!q) return SECTIONS;
@@ -128,9 +145,15 @@ export default function Help() {
           <h1 className="font-display font-bold text-3xl lg:text-4xl text-slate-900">Centre d'aide</h1>
           <p className="mt-1 text-slate-600">Tout ce qu'il faut savoir pour tirer le meilleur de ClubPaper.</p>
         </div>
-        <Button onClick={startTour} className="rounded-full h-11" style={{background:"var(--club-primary)"}} data-testid="help-restart-tour">
-          <PlayCircle size={18} className="mr-2" />Relancer le tour guidé
-        </Button>
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex items-center gap-2 pl-4 pr-1 h-11 rounded-full border border-slate-200 bg-white" data-testid="help-tour-toggle">
+            <Label htmlFor="tour-toggle" className="text-sm text-slate-700 cursor-pointer">Tutoriel auto. à la connexion</Label>
+            <Switch id="tour-toggle" checked={tourEnabled} onCheckedChange={onToggleTour} />
+          </div>
+          <Button onClick={startTour} className="rounded-full h-11" style={{background:"var(--club-primary)"}} data-testid="help-restart-tour">
+            <PlayCircle size={18} className="mr-2" />Relancer le tour guidé
+          </Button>
+        </div>
       </div>
 
       <div className="mt-6 relative">

@@ -109,8 +109,19 @@ export default function Landing() {
             <h2 className="font-display text-3xl lg:text-4xl font-bold text-slate-900">À quoi ça ressemble ?</h2>
             <p className="mt-4 text-slate-600 text-lg">Un tableau de bord clair, pensé pour être compris en un coup d'œil.</p>
           </div>
-          <div className="mt-12 max-w-4xl mx-auto">
-            <AppPreviewMock />
+          <div className="mt-12 flex flex-col lg:flex-row items-center justify-center gap-10 lg:gap-6">
+            <img
+              src="/screenshots/cp-screenshot-1.png"
+              alt="Tableau de bord ClubPaper sur ordinateur"
+              className="w-full max-w-3xl rounded-2xl shadow-xl border border-slate-200"
+              data-testid="landing-screenshot-desktop"
+            />
+            <img
+              src="/screenshots/cp-ipad-screenshot.png"
+              alt="ClubPaper sur tablette"
+              className="w-full max-w-[280px] rounded-2xl shadow-xl"
+              data-testid="landing-screenshot-tablet"
+            />
           </div>
         </div>
       </section>
@@ -185,45 +196,6 @@ function BenefitCard({ icon: Icon, title, desc }) {
       </div>
       <h3 className="mt-4 font-display font-semibold text-base text-slate-900">{title}</h3>
       <p className="mt-2 text-slate-600 text-sm leading-relaxed">{desc}</p>
-    </div>
-  );
-}
-
-function AppPreviewMock() {
-  return (
-    <div className="rounded-2xl shadow-xl border border-slate-200 bg-white overflow-hidden">
-      <div className="h-9 bg-slate-100 flex items-center gap-1.5 px-4 border-b border-slate-200">
-        <span className="w-2.5 h-2.5 rounded-full bg-red-400" />
-        <span className="w-2.5 h-2.5 rounded-full bg-amber-400" />
-        <span className="w-2.5 h-2.5 rounded-full bg-emerald-400" />
-      </div>
-      <div className="p-6 sm:p-8">
-        <div className="grid sm:grid-cols-3 gap-4">
-          <div className="paper-card p-4">
-            <div className="text-xs text-slate-500 uppercase tracking-wide">Adhérents</div>
-            <div className="mt-1 font-display font-bold text-2xl text-slate-900">128</div>
-          </div>
-          <div className="paper-card p-4">
-            <div className="text-xs text-slate-500 uppercase tracking-wide">Encaissé</div>
-            <div className="mt-1 font-display font-bold text-2xl text-emerald-600">6 240 €</div>
-          </div>
-          <div className="paper-card p-4">
-            <div className="text-xs text-slate-500 uppercase tracking-wide">En attente</div>
-            <div className="mt-1 font-display font-bold text-2xl text-amber-600">890 €</div>
-          </div>
-        </div>
-        <div className="mt-4 h-2 rounded-full bg-slate-100 overflow-hidden">
-          <div className="h-full bg-orange-500" style={{ width: "78%" }} />
-        </div>
-        <div className="mt-6 space-y-2">
-          {["Léa Martin — U11", "Noah Dupont — U13", "Emma Bernard — Séniors"].map((name) => (
-            <div key={name} className="flex items-center justify-between px-4 py-3 rounded-xl bg-slate-50 text-sm">
-              <span className="text-slate-700 font-medium">{name}</span>
-              <span className="pill-tag status-paid">Payé</span>
-            </div>
-          ))}
-        </div>
-      </div>
     </div>
   );
 }
