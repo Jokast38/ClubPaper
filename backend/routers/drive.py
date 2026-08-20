@@ -41,10 +41,12 @@ def _client_config():
 
 
 def _drive_service_from_creds(creds_doc: dict):
+    from datetime import datetime as _dt
     from google.oauth2.credentials import Credentials
     from google.auth.transport.requests import Request as GoogleRequest
     from googleapiclient.discovery import build
 
+    expiry = creds_doc.get("expiry")
     creds = Credentials(
         token=creds_doc["access_token"],
         refresh_token=creds_doc.get("refresh_token"),
@@ -52,6 +54,7 @@ def _drive_service_from_creds(creds_doc: dict):
         client_id=creds_doc["client_id"],
         client_secret=creds_doc["client_secret"],
         scopes=creds_doc.get("scopes") or SCOPES,
+        expiry=_dt.fromisoformat(expiry) if expiry else None,
     )
     if creds.expired and creds.refresh_token:
         creds.refresh(GoogleRequest())
@@ -274,14 +277,41 @@ async def export_receipt(fee_id: str, user: dict = Depends(current_user)):
     return {"drive_file_id": file["id"], "url": file.get("webViewLink")}
 
 
-async def _ensure_club_folder(service, club: dict, subfolder: str = "") -> str:
-    """Return (creating if needed) the ID of the club's root folder, or a subfolder."""
+async def _ensure_club_folder(service, club: dict, subfolder="") -> str:
+    """Return (creating if needed) the ID of the club's root folder, or a nested subfolder.
+
+    `subfolder` may be a single name or a list of names for a nested path
+    (e.g. ["Adhérents", "Léa Martin"]).
+    """
     root_name = f"ClubPaper - {club['name']}"
-    root = _find_folder(service, root_name, parent=None) or _create_folder(service, root_name, parent=None)
-    if not subfolder:
-        return root
-    sub = _find_folder(service, subfolder, parent=root) or _create_folder(service, subfolder, parent=root)
-    return sub
+    folder_id = _find_folder(service, root_name, parent=None) or _create_folder(service, root_name, parent=None)
+    parts = [subfolder] if isinstance(subfolder, str) else list(subfolder or [])
+    for part in parts:
+        if not part:
+            continue
+        folder_id = _find_folder(service, part, parent=folder_id) or _create_folder(service, part, parent=folder_id)
+    return folder_id
+
+
+async def export_member_document(club_id: str, member: dict, filename: str, content: bytes, content_type: str):
+    """Mirror an uploaded member document into the club's Drive, under
+    'ClubPaper - <club> / Adhérents / <member name>'. Best-effort: silently
+    no-ops if Drive isn't connected, never raises into the caller.
+    """
+    try:
+        service = await _get_service(club_id)
+    except HTTPException:
+        return
+    try:
+        db = get_db()
+        club = await db.clubs.find_one({"id": club_id}, {"_id": 0})
+        member_name = f"{member.get('first_name','')} {member.get('last_name','')}".strip() or "Adhérent"
+        folder_id = await _ensure_club_folder(service, club, subfolder=["Adhérents", member_name])
+        from googleapiclient.http import MediaIoBaseUpload
+        media = MediaIoBaseUpload(io.BytesIO(content), mimetype=content_type or "application/octet-stream", resumable=False)
+        service.files().create(body={"name": filename, "parents": [folder_id]}, media_body=media, fields="id").execute()
+    except Exception as e:
+        logger.warning("drive member document export failed: %s", e)
 
 
 def _find_folder(service, name: str, parent):

@@ -1,6 +1,7 @@
 """Members CRUD + import CSV/XLSX + documents + PDFs."""
 import io
 import csv
+import asyncio
 import logging
 from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException, Depends, UploadFile, File, Form
@@ -12,6 +13,7 @@ from deps import current_user, get_user_club, serialize
 from storage import put_object, get_object, build_path, MIME_TYPES
 from xlsx_import import parse_xlsx
 from pdf_utils import receipt_pdf, member_sheet_pdf, license_pdf
+from routers.drive import export_member_document
 
 router = APIRouter(tags=["members"])
 logger = logging.getLogger(__name__)
@@ -199,6 +201,7 @@ async def upload_document(
         size=result.get("size", len(content)),
     )
     await db.documents.insert_one(serialize(doc))
+    asyncio.create_task(export_member_document(club["id"], member, doc.original_filename, content, content_type))
     if kind == "medical_cert":
         await db.members.update_one({"id": member_id}, {"$set": {"medical_cert_status": "ok"}})
     return doc.model_dump()

@@ -33,10 +33,12 @@ def _client_config():
 
 
 def _calendar_service_from_creds(creds_doc: dict):
+    from datetime import datetime as _dt
     from google.oauth2.credentials import Credentials
     from google.auth.transport.requests import Request as GoogleRequest
     from googleapiclient.discovery import build
 
+    expiry = creds_doc.get("expiry")
     creds = Credentials(
         token=creds_doc["access_token"],
         refresh_token=creds_doc.get("refresh_token"),
@@ -44,6 +46,7 @@ def _calendar_service_from_creds(creds_doc: dict):
         client_id=creds_doc["client_id"],
         client_secret=creds_doc["client_secret"],
         scopes=creds_doc.get("scopes") or SCOPES,
+        expiry=_dt.fromisoformat(expiry) if expiry else None,
     )
     if creds.expired and creds.refresh_token:
         creds.refresh(GoogleRequest())
