@@ -1,4 +1,5 @@
 """Public (unauthenticated) endpoints."""
+import asyncio
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import Response as FastAPIResponse
 
@@ -6,6 +7,7 @@ from models import ProspectCreate, Prospect
 from database import get_db
 from deps import serialize
 from storage import get_object
+from email_utils import send_email, new_prospect_html
 
 router = APIRouter(prefix="/public", tags=["public"])
 
@@ -28,7 +30,22 @@ async def submit_prospect(slug: str, data: ProspectCreate):
         raise HTTPException(404, "Club introuvable")
     prospect = Prospect(**data.model_dump(), club_id=club["id"])
     await db.prospects.insert_one(serialize(prospect))
+    asyncio.create_task(_notify_new_prospect(db, club, prospect))
     return {"ok": True, "message": "Votre demande a bien été reçue. Le club vous contactera prochainement."}
+
+
+async def _notify_new_prospect(db, club: dict, prospect: Prospect):
+    to = club.get("email") or ""
+    if not to:
+        owner = await db.users.find_one({"id": club.get("owner_id")}, {"_id": 0, "email": 1})
+        to = (owner or {}).get("email", "")
+    if not to:
+        return
+    await send_email(
+        to, f"Nouvelle demande — {prospect.first_name} {prospect.last_name}",
+        new_prospect_html(club.get("name", ""), prospect.model_dump()),
+        club_id=club["id"], kind="new_prospect",
+    )
 
 
 @router.get("/clubs/{slug}/blog")

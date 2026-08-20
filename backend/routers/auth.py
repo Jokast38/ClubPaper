@@ -1,10 +1,12 @@
 """Auth routes."""
 import os
+import asyncio
 from fastapi import APIRouter, HTTPException, Response, Depends
 from models import UserCreate, UserLogin, User
 from auth_utils import hash_password, verify_password, create_access_token
 from database import get_db
 from deps import current_user, serialize, cookie_kwargs, clean_doc
+from email_utils import send_email, welcome_html
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -21,6 +23,7 @@ async def register(data: UserCreate, response: Response):
     await db.users.insert_one(doc)
     token = create_access_token(user.id, email)
     response.set_cookie("access_token", token, max_age=604800, **cookie_kwargs())
+    asyncio.create_task(send_email(email, "Bienvenue sur ClubPaper 🎉", welcome_html(user.name), kind="welcome"))
     return {"user": user.model_dump(), "token": token}
 
 
@@ -73,6 +76,7 @@ async def google_login(payload: dict, response: Response):
         doc["password_hash"] = ""
         await db.users.insert_one(doc)
         user = doc
+        asyncio.create_task(send_email(email, "Bienvenue sur ClubPaper 🎉", welcome_html(new_user.name), kind="welcome"))
 
     token = create_access_token(user["id"], email)
     response.set_cookie("access_token", token, max_age=604800, **cookie_kwargs())
