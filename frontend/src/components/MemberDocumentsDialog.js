@@ -22,7 +22,7 @@ export default function MemberDocumentsDialog({ member, open, onOpenChange }) {
     const { data } = await api.get(`/members/${member.id}/documents`);
     setDocs(data);
   };
-  useEffect(() => { if (open) load(); }, [open, member]);
+  useEffect(() => { if (open) load(); }, [open, member]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const upload = async (e) => {
     const file = e.target.files?.[0];

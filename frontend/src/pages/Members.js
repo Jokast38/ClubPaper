@@ -43,8 +43,8 @@ export default function Members() {
     setTotal(data.total || 0);
   };
 
-  useEffect(() => { load({ page: 1 }); setPage(1); setSelected(new Set()); /* eslint-disable-next-line */ }, [team]);
-  useEffect(() => { load(); /* eslint-disable-next-line */ }, [page]);
+  useEffect(() => { load({ page: 1 }); setPage(1); setSelected(new Set()); }, [team]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { load(); }, [page]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     clearTimeout(searchDebounce.current);
