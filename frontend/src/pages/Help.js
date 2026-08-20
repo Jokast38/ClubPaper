@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Search, Users, Wallet, CalendarDays, Megaphone, HardDrive, Newspaper, Settings as SettingsIcon, PlayCircle, MessageCircle, Mail, ArrowRight } from "lucide-react";
 import { startTour } from "@/components/OnboardingTour";
 import { useAuth } from "@/lib/AuthContext";
@@ -117,6 +118,7 @@ export default function Help() {
   const { user, refresh } = useAuth() || {};
   const [q, setQ] = useState("");
   const [open, setOpen] = useState(SECTIONS[0].id);
+  const [lightbox, setLightbox] = useState(null);
   const tourEnabled = user?.tour_enabled !== false;
 
   const onToggleTour = async (checked) => {
@@ -187,7 +189,13 @@ export default function Help() {
             </div>
             <div className="mt-6 grid md:grid-cols-2 gap-4">
               {s.steps.map((st, i) => (
-                <div key={i} className="border border-slate-100 rounded-2xl overflow-hidden" data-testid={`help-step-${s.id}-${i}`}>
+                <button
+                  key={i}
+                  type="button"
+                  onClick={() => setLightbox(st)}
+                  className="text-left border border-slate-100 rounded-2xl overflow-hidden hover:-translate-y-0.5 hover:shadow-md transition-transform cursor-zoom-in"
+                  data-testid={`help-step-${s.id}-${i}`}
+                >
                   <div className="bg-slate-50 h-40 flex items-center justify-center overflow-hidden">
                     <img src={SHOT(st.shot)} alt={st.title}
                          className="w-full h-full object-cover"
@@ -198,7 +206,7 @@ export default function Help() {
                     <div className="font-medium text-slate-900">{st.title}</div>
                     <p className="text-sm text-slate-600 mt-1 leading-relaxed">{st.body}</p>
                   </div>
-                </div>
+                </button>
               ))}
             </div>
           </section>
@@ -228,6 +236,26 @@ export default function Help() {
         <p className="mt-2 text-slate-600">Écrivez-nous, on vous répond dans la journée (jours ouvrés).</p>
         <a href="mailto:jokast2023@gmail.com"><Button className="mt-4 rounded-full" style={{background:"var(--club-primary)"}} data-testid="help-contact-btn">Contacter le support <ArrowRight size={14} className="ml-2" /></Button></a>
       </section>
+
+      {/* Screenshot lightbox */}
+      <Dialog open={!!lightbox} onOpenChange={(v) => !v && setLightbox(null)}>
+        <DialogContent className="max-w-4xl p-2" data-testid="help-lightbox">
+          {lightbox && (
+            <div>
+              <img
+                src={SHOT(lightbox.shot)}
+                alt={lightbox.title}
+                className="w-full rounded-lg"
+                onError={(e) => { e.target.style.display = 'none'; }}
+              />
+              <div className="p-4">
+                <div className="font-medium text-slate-900">{lightbox.title}</div>
+                <p className="text-sm text-slate-600 mt-1 leading-relaxed">{lightbox.body}</p>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

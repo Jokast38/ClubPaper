@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { Joyride, STATUS, EVENTS, ACTIONS } from "react-joyride";
 import { useAuth } from "@/lib/AuthContext";
@@ -49,16 +49,14 @@ const STEPS = [
   },
 ];
 
-const NAV_DELAY = 380;
-
 export default function OnboardingTour() {
   const { user, refresh } = useAuth() || {};
   const location = useLocation();
   const navigate = useNavigate();
   const [run, setRun] = useState(false);
   const [stepIndex, setStepIndex] = useState(0);
-  const navTimeout = useRef(null);
 
+  // Auto-start once per account (persisted server-side), only on the first /app visit.
   useEffect(() => {
     if (!user) return;
     if (location.pathname !== "/app") return;
@@ -75,29 +73,25 @@ export default function OnboardingTour() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
+  // Manual restart trigger (the "Relancer le tour guidé" button on the Aide page).
   useEffect(() => {
     const handler = () => { setStepIndex(0); setRun(true); };
     window.addEventListener("cm:start-tour", handler);
-    return () => {
-      window.removeEventListener("cm:start-tour", handler);
-      clearTimeout(navTimeout.current);
-    };
+    return () => window.removeEventListener("cm:start-tour", handler);
   }, []);
 
-  const goToStep = (nextIndex) => {
-    const next = STEPS[nextIndex];
-    if (!next) { setRun(false); return; }
-    if (next.route && next.route !== location.pathname) {
-      setRun(false);
-      navigate(next.route);
-      navTimeout.current = setTimeout(() => {
-        setStepIndex(nextIndex);
-        setRun(true);
-      }, NAV_DELAY);
-    } else {
-      setStepIndex(nextIndex);
+  // Whenever the active step belongs to a different page, follow it there.
+  // Joyride stays mounted (run never toggles off mid-tour) and retries locating
+  // the target itself once the new page renders — this is the pattern the
+  // library expects for controlled multi-page tours.
+  useEffect(() => {
+    if (!run) return;
+    const step = STEPS[stepIndex];
+    if (step?.route && step.route !== location.pathname) {
+      navigate(step.route);
     }
-  };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [run, stepIndex]);
 
   const onCallback = (data) => {
     const { status, type, index, action } = data;
@@ -106,10 +100,8 @@ export default function OnboardingTour() {
       setStepIndex(0);
       return;
     }
-    if (type === EVENTS.STEP_AFTER) {
-      goToStep(index + (action === ACTIONS.PREV ? -1 : 1));
-    } else if (type === EVENTS.TARGET_NOT_FOUND) {
-      goToStep(index + 1);
+    if (type === EVENTS.STEP_AFTER || type === EVENTS.TARGET_NOT_FOUND) {
+      setStepIndex(index + (action === ACTIONS.PREV ? -1 : 1));
     }
   };
 
