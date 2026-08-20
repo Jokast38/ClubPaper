@@ -3,9 +3,10 @@ import os
 import stripe
 
 def setup_catalog():
-    stripe.api_key = os.environ.get("STRIPE_SECRET_KEY")
-    if not stripe.api_key:
+    api_key = os.environ.get("STRIPE_SECRET_KEY")
+    if not api_key:
         return
+    stripe.api_key = api_key
 
     catalog = [
         {
