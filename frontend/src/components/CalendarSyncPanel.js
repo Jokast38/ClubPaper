@@ -3,6 +3,7 @@ import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { CalendarDays, CheckCircle2, XCircle } from "lucide-react";
 import { toast } from "sonner";
+import { GoogleCalendarIcon } from "@/components/GoogleIcons";
 
 export default function CalendarSyncPanel() {
   const [status, setStatus] = useState(null);
@@ -48,7 +49,7 @@ export default function CalendarSyncPanel() {
   return (
     <div className="paper-card p-6" data-testid="calendar-sync-panel">
       <div className="flex items-start gap-3">
-        <div className="w-11 h-11 rounded-xl grid place-items-center text-white shrink-0" style={{background:"var(--club-primary)"}}><CalendarDays size={22} strokeWidth={2.5} /></div>
+        <div className="w-11 h-11 rounded-xl grid place-items-center bg-white border border-slate-200 shrink-0"><GoogleCalendarIcon size={24} /></div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-3 flex-wrap">
             <h3 className="font-display font-semibold text-lg text-slate-900">Google Agenda</h3>

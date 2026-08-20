@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Joyride, STATUS } from "react-joyride";
 import { useAuth } from "@/lib/AuthContext";
+import { api } from "@/lib/api";
 
 const STEPS = [
   {
@@ -50,17 +51,15 @@ const STEPS = [
   },
 ];
 
-const STORAGE_KEY = "cm_tour_seen_v1";
-
 export default function OnboardingTour() {
-  const { user } = useAuth() || {};
+  const { user, refresh } = useAuth() || {};
   const [run, setRun] = useState(false);
 
   useEffect(() => {
     if (!user) return;
-    // Auto-start once per user, only on /app
+    // Auto-start once per account (persisted server-side), only on /app
     if (window.location.pathname !== "/app") return;
-    if (localStorage.getItem(STORAGE_KEY)) return;
+    if (user.tour_seen) return;
     const t = setTimeout(() => setRun(true), 900);
     return () => clearTimeout(t);
   }, [user]);
@@ -74,8 +73,8 @@ export default function OnboardingTour() {
   const onCallback = (data) => {
     const finished = [STATUS.FINISHED, STATUS.SKIPPED].includes(data.status);
     if (finished) {
-      localStorage.setItem(STORAGE_KEY, "1");
       setRun(false);
+      api.post("/auth/tour-seen").then(() => refresh?.()).catch(() => {});
     }
   };
 
@@ -109,6 +108,5 @@ export default function OnboardingTour() {
 }
 
 export function startTour() {
-  localStorage.removeItem(STORAGE_KEY);
   window.dispatchEvent(new Event("cm:start-tour"));
 }

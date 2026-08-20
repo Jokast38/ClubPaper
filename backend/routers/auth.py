@@ -94,3 +94,15 @@ async def me(user: dict = Depends(current_user)):
     if user.get("club_id"):
         club = await db.clubs.find_one({"id": user["club_id"]}, {"_id": 0})
     return {"user": user, "club": club}
+
+
+@router.post("/tour-seen")
+async def mark_tour_seen(user: dict = Depends(current_user)):
+    await get_db().users.update_one({"id": user["id"]}, {"$set": {"tour_seen": True}})
+    return {"ok": True}
+
+
+@router.post("/tour-reset")
+async def reset_tour(user: dict = Depends(current_user)):
+    await get_db().users.update_one({"id": user["id"]}, {"$set": {"tour_seen": False}})
+    return {"ok": True}

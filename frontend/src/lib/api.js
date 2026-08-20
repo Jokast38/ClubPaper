@@ -3,9 +3,12 @@ import axios from "axios";
 const BACKEND = process.env.REACT_APP_BACKEND_URL;
 export const API = `${BACKEND}/api`;
 
+// Auth is carried via a Bearer token (Authorization header, see interceptor below),
+// not cookies — this lets the backend allow all CORS origins without violating the
+// spec rule that forbids "*" combined with credentialed (cookie) requests.
 export const api = axios.create({
   baseURL: API,
-  withCredentials: true,
+  withCredentials: false,
 });
 
 api.interceptors.request.use((config) => {

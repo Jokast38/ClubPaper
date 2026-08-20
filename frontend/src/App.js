@@ -23,6 +23,7 @@ import PublicClub from "@/pages/PublicClub";
 import PaymentSuccess from "@/pages/PaymentSuccess";
 import PaymentCancel from "@/pages/PaymentCancel";
 import PayFee from "@/pages/PayFee";
+import LegalPage from "@/pages/LegalPage";
 import AppShell from "@/components/AppShell";
 import OnboardingTour from "@/components/OnboardingTour";
 
@@ -74,6 +75,7 @@ function App() {
           <Route path="/app/prospects" element={<Private><Shell><Prospects /></Shell></Private>} />
           <Route path="/app/blog" element={<Private><Shell><Blog /></Shell></Private>} />
           <Route path="/app/aide" element={<Private><Shell><Help /></Shell></Private>} />
+          <Route path="/legal/:doc" element={<LegalPage />} />
           <Route path="/c/:slug" element={<PublicClub />} />
           <Route path="/c/:slug/blog/:postSlug" element={<BlogPost />} />
           <Route path="/pay/:feeId" element={<PayFee />} />

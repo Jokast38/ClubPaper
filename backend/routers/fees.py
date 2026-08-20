@@ -175,7 +175,7 @@ async def create_checkout(req: CheckoutRequest, request: Request):
         club = await get_user_club(user)
         prices = stripe.Price.list(lookup_keys=[req.lookup_key], active=True, limit=1).data
         if not prices:
-            raise HTTPException(500, f"Tarif introuvable: {req.lookup_key}")
+            raise HTTPException(400, f"Tarif Stripe introuvable ({req.lookup_key}). Vérifiez que STRIPE_SECRET_KEY est configuré côté serveur.")
         price = prices[0]
         session = stripe.checkout.Session.create(
             line_items=[{"price": price.id, "quantity": 1}],

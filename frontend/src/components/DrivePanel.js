@@ -3,6 +3,7 @@ import { api, API } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { HardDrive, CheckCircle2, XCircle, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
+import { GoogleDriveIcon } from "@/components/GoogleIcons";
 
 export default function DrivePanel() {
   const [status, setStatus] = useState(null);
@@ -48,7 +49,7 @@ export default function DrivePanel() {
   return (
     <div className="paper-card p-6" data-testid="drive-panel">
       <div className="flex items-start gap-3">
-        <div className="w-11 h-11 rounded-xl grid place-items-center text-white shrink-0" style={{background:"var(--club-primary)"}}><HardDrive size={22} strokeWidth={2.5} /></div>
+        <div className="w-11 h-11 rounded-xl grid place-items-center bg-white border border-slate-200 shrink-0"><GoogleDriveIcon size={24} /></div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-3 flex-wrap">
             <h3 className="font-display font-semibold text-lg text-slate-900">Google Drive</h3>
