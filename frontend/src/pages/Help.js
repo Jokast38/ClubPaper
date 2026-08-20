@@ -226,7 +226,7 @@ export default function Help() {
         <div className="w-14 h-14 mx-auto rounded-2xl bg-orange-100 text-orange-700 grid place-items-center"><Mail size={24} strokeWidth={2.5} /></div>
         <h3 className="mt-4 font-display font-semibold text-lg text-slate-900">Vous avez d'autres questions ?</h3>
         <p className="mt-2 text-slate-600">Écrivez-nous, on vous répond dans la journée (jours ouvrés).</p>
-        <a href="mailto:support@clubpaper.app"><Button className="mt-4 rounded-full" style={{background:"var(--club-primary)"}} data-testid="help-contact-btn">Contacter le support <ArrowRight size={14} className="ml-2" /></Button></a>
+        <a href="mailto:jokast2023@gmail.com"><Button className="mt-4 rounded-full" style={{background:"var(--club-primary)"}} data-testid="help-contact-btn">Contacter le support <ArrowRight size={14} className="ml-2" /></Button></a>
       </section>
     </div>
   );
