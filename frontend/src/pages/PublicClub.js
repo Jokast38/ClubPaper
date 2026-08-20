@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
-import { MapPin, Mail, Phone, Users, Calendar as CalIcon, ArrowRight } from "lucide-react";
+import { MapPin, Mail, Phone, Globe, Users, Calendar as CalIcon, ArrowRight } from "lucide-react";
 import { publicMediaUrl } from "@/lib/media";
 
 export default function PublicClub() {
@@ -87,6 +87,12 @@ export default function PublicClub() {
               {club.address && <li className="flex gap-3"><MapPin className="shrink-0" size={20} style={{color: primary}} /><span>{club.address}{club.city ? `, ${club.city}` : ""}</span></li>}
               {club.email && <li className="flex gap-3"><Mail className="shrink-0" size={20} style={{color: primary}} /><a href={`mailto:${club.email}`}>{club.email}</a></li>}
               {club.phone && <li className="flex gap-3"><Phone className="shrink-0" size={20} style={{color: primary}} /><a href={`tel:${club.phone}`}>{club.phone}</a></li>}
+              {club.website_url && (
+                <li className="flex gap-3">
+                  <Globe className="shrink-0" size={20} style={{color: primary}} />
+                  <a href={/^https?:\/\//i.test(club.website_url) ? club.website_url : `https://${club.website_url}`} target="_blank" rel="noreferrer" data-testid="public-website-link">Site officiel</a>
+                </li>
+              )}
             </ul>
             <img
               src={club.about_image_data_url || "https://images.pexels.com/photos/7611541/pexels-photo-7611541.jpeg"}

@@ -65,6 +65,7 @@ class Club(BaseModel):
     city: str = ""
     email: str = ""
     phone: str = ""
+    website_url: str = ""  # club's existing official website, shown as "site officiel" on the public page
     logo_data_url: str = ""  # base64 data URL
     signature_data_url: str = ""  # base64 data URL - uploaded or hand-drawn signature for attestations
     hero_image_data_url: str = ""  # base64 data URL - public page hero background (falls back to a default if empty)
@@ -88,6 +89,7 @@ class ClubUpdate(BaseModel):
     city: Optional[str] = None
     email: Optional[str] = None
     phone: Optional[str] = None
+    website_url: Optional[str] = None
     logo_data_url: Optional[str] = None
     signature_data_url: Optional[str] = None
     hero_image_data_url: Optional[str] = None

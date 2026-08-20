@@ -32,7 +32,7 @@ export default function Settings() {
       setForm({
         name: club.name, sport: club.sport, description: club.description,
         city: club.city, address: club.address, email: club.email,
-        phone: club.phone, default_fee: club.default_fee, teams: (club.teams || []).join(", "),
+        phone: club.phone, website_url: club.website_url, default_fee: club.default_fee, teams: (club.teams || []).join(", "),
       });
       setTheme(club.theme);
       setLogo(club.logo_data_url || "");
@@ -245,6 +245,7 @@ export default function Settings() {
           <div><Label>Adresse (entraînements)</Label><Input value={form.address || ""} onChange={upd("address")} data-testid="settings-address" className="mt-1 h-11" /></div>
           <div><Label>Email</Label><Input type="email" value={form.email || ""} onChange={upd("email")} data-testid="settings-email" className="mt-1 h-11" /></div>
           <div><Label>Téléphone</Label><Input value={form.phone || ""} onChange={upd("phone")} data-testid="settings-phone" className="mt-1 h-11" /></div>
+          <div className="sm:col-span-2"><Label>Site officiel du club (si existant)</Label><Input type="url" placeholder="https://www.mon-club.fr" value={form.website_url || ""} onChange={upd("website_url")} data-testid="settings-website" className="mt-1 h-11" /></div>
           <div className="sm:col-span-2"><Label>Description publique</Label><Textarea rows={3} value={form.description || ""} onChange={upd("description")} data-testid="settings-description" className="mt-1" /></div>
           <div><Label>Cotisation par défaut (€)</Label><Input type="number" step="0.01" value={form.default_fee || 0} onChange={upd("default_fee")} data-testid="settings-default-fee" className="mt-1 h-11" /></div>
           <div><Label>Équipes (séparées par virgules)</Label><Input value={form.teams || ""} onChange={upd("teams")} data-testid="settings-teams" className="mt-1 h-11" placeholder="U9, U11, U13, Séniors" /></div>
