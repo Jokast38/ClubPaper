@@ -5,7 +5,7 @@ from fastapi import APIRouter, HTTPException, Response, Depends
 from models import UserCreate, UserLogin, User
 from auth_utils import hash_password, verify_password, create_access_token
 from database import get_db
-from deps import current_user, serialize, cookie_kwargs, clean_doc
+from deps import current_user, serialize, cookie_kwargs, clean_doc, delete_club_cascade
 from email_utils import send_email, welcome_html
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -98,6 +98,19 @@ async def me(user: dict = Depends(current_user)):
     if user.get("club_id"):
         club = await db.clubs.find_one({"id": user["club_id"]}, {"_id": 0})
     return {"user": user, "club": club}
+
+
+@router.delete("/me")
+async def delete_my_account(response: Response, user: dict = Depends(current_user)):
+    """Self-service account deletion — permanently removes the club (if any)
+    and the user's own account. Irreversible."""
+    db = get_db()
+    if user.get("club_id"):
+        await delete_club_cascade(user["club_id"])
+    else:
+        await db.users.delete_one({"id": user["id"]})
+    response.delete_cookie("access_token", path="/")
+    return {"ok": True}
 
 
 @router.post("/tour-seen")

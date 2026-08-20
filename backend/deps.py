@@ -52,6 +52,13 @@ async def current_user(request: Request):
     return await get_current_user(request, get_db())
 
 
+async def platform_admin_user(request: Request):
+    user = await get_current_user(request, get_db())
+    if not user.get("is_platform_admin"):
+        raise HTTPException(403, "Réservé à l'administrateur de la plateforme")
+    return user
+
+
 async def get_user_club(user: dict) -> dict:
     if not user.get("club_id"):
         raise HTTPException(400, "Aucun club associé à cet utilisateur")
@@ -68,6 +75,28 @@ async def unique_club_slug(base: str) -> str:
         n += 1
         s = f"{base}-{n}"
     return s
+
+
+async def delete_club_cascade(club_id: str):
+    """Permanently delete a club and everything tied to it: members, fees,
+    sessions, announcements, blog posts, documents, prospects, payment
+    transactions, Drive/Calendar credentials, and every user account linked
+    to the club. Used both by the platform-admin panel and self-service
+    account deletion.
+    """
+    db = get_db()
+    await db.members.delete_many({"club_id": club_id})
+    await db.fees.delete_many({"club_id": club_id})
+    await db.sessions.delete_many({"club_id": club_id})
+    await db.announcements.delete_many({"club_id": club_id})
+    await db.blog_posts.delete_many({"club_id": club_id})
+    await db.documents.delete_many({"club_id": club_id})
+    await db.prospects.delete_many({"club_id": club_id})
+    await db.payment_transactions.delete_many({"club_id": club_id})
+    await db.drive_credentials.delete_many({"club_id": club_id})
+    await db.calendar_credentials.delete_many({"club_id": club_id})
+    await db.users.delete_many({"club_id": club_id})
+    await db.clubs.delete_one({"id": club_id})
 
 
 def cookie_kwargs():

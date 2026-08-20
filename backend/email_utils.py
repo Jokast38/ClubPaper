@@ -136,6 +136,33 @@ def new_prospect_html(club_name: str, prospect: dict) -> str:
 """
 
 
+def support_ticket_html(ticket: dict) -> str:
+    return f"""
+<div style="font-family: -apple-system, sans-serif; max-width: 560px; margin: 0 auto; padding: 24px; color: #0f172a;">
+  <p style="color: #64748b; font-size: 14px; text-transform: uppercase; letter-spacing: 1px;">Nouveau signalement — ClubPaper</p>
+  <h2 style="color: #ea580c; margin: 8px 0 16px;">{ticket.get('subject','')}</h2>
+  <p><strong>De :</strong> {ticket.get('user_name','')} ({ticket.get('user_email','')})</p>
+  {f"<p><strong>Club :</strong> {ticket.get('club_name')}</p>" if ticket.get('club_name') else ''}
+  <p style="white-space: pre-line; background:#F8FAFC; border-radius:12px; padding:16px; margin-top:16px;">{ticket.get('message','')}</p>
+</div>
+"""
+
+
+def support_reply_html(ticket: dict, reply_message: str) -> str:
+    return f"""
+<div style="font-family: -apple-system, sans-serif; max-width: 560px; margin: 0 auto; padding: 24px; color: #0f172a;">
+  <p style="color: #64748b; font-size: 14px; text-transform: uppercase; letter-spacing: 1px;">ClubPaper — Réponse à votre signalement</p>
+  <h2 style="color: #ea580c; margin: 8px 0 16px;">{ticket.get('subject','')}</h2>
+  <p style="white-space: pre-line;">{reply_message}</p>
+  <div style="margin-top: 24px; padding-top: 16px; border-top: 1px solid #E2E8F0; color: #64748b; font-size: 13px;">
+    <p style="margin:0 0 4px;">Votre message initial :</p>
+    <p style="white-space: pre-line; margin:0;">{ticket.get('message','')}</p>
+  </div>
+  <p style="color: #64748b; font-size: 14px; margin-top:24px;">L'équipe ClubPaper</p>
+</div>
+"""
+
+
 def reminder_html(club_name: str, member_name: str, amount: float, pay_url: str, level: int) -> str:
     intros = {
         1: "Petit rappel amical",

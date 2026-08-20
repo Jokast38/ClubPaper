@@ -31,6 +31,7 @@ from routers import public as public_router
 from routers import notifications as notifications_router
 from routers import drive as drive_router
 from routers import gcal as gcal_router
+from routers import admin as admin_router
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger("clubmanager")
@@ -51,6 +52,7 @@ api.include_router(public_router.router)
 api.include_router(notifications_router.router)
 api.include_router(drive_router.router)
 api.include_router(gcal_router.router)
+api.include_router(admin_router.router)
 
 
 @api.get("/")
@@ -86,18 +88,22 @@ app.add_middleware(
 
 
 async def _seed_admin(db):
-    """Create the admin account from ADMIN_EMAIL/ADMIN_PASSWORD if it doesn't exist yet."""
+    """Create (or promote) the platform operator account from ADMIN_EMAIL/ADMIN_PASSWORD."""
     email = (os.environ.get("ADMIN_EMAIL") or "").strip().lower()
     password = os.environ.get("ADMIN_PASSWORD") or ""
     if not email or not password:
         return
-    if await db.users.find_one({"email": email}):
+    existing = await db.users.find_one({"email": email})
+    if existing:
+        if not existing.get("is_platform_admin"):
+            await db.users.update_one({"id": existing["id"]}, {"$set": {"is_platform_admin": True}})
+            logger.info("Promoted existing account to platform admin: %s", email)
         return
-    user = User(email=email, name="Admin", role="admin")
+    user = User(email=email, name="Admin", role="admin", is_platform_admin=True)
     doc = serialize(user)
     doc["password_hash"] = hash_password(password)
     await db.users.insert_one(doc)
-    logger.info("Seeded admin account: %s", email)
+    logger.info("Seeded platform admin account: %s", email)
 
 
 @app.on_event("startup")

@@ -5,8 +5,9 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { Dialog, DialogContent } from "@/components/ui/dialog";
-import { Search, Users, Wallet, CalendarDays, Megaphone, HardDrive, Newspaper, Settings as SettingsIcon, PlayCircle, MessageCircle, Mail, ArrowRight } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
+import { Search, Users, Wallet, CalendarDays, Megaphone, HardDrive, Newspaper, Settings as SettingsIcon, PlayCircle, MessageCircle, Mail, ArrowRight, TriangleAlert } from "lucide-react";
 import { startTour } from "@/components/OnboardingTour";
 import { useAuth } from "@/lib/AuthContext";
 import { api } from "@/lib/api";
@@ -119,6 +120,7 @@ export default function Help() {
   const [q, setQ] = useState("");
   const [open, setOpen] = useState(SECTIONS[0].id);
   const [lightbox, setLightbox] = useState(null);
+  const [reportOpen, setReportOpen] = useState(false);
   const tourEnabled = user?.tour_enabled !== false;
 
   const onToggleTour = async (checked) => {
@@ -154,6 +156,9 @@ export default function Help() {
           </div>
           <Button onClick={startTour} className="rounded-full h-11" style={{background:"var(--club-primary)"}} data-testid="help-restart-tour">
             <PlayCircle size={18} className="mr-2" />Relancer le tour guidé
+          </Button>
+          <Button variant="outline" onClick={() => setReportOpen(true)} className="rounded-full h-11 text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700" data-testid="help-report-problem-btn">
+            <TriangleAlert size={18} className="mr-2" />Signaler un problème
           </Button>
         </div>
       </div>
@@ -256,6 +261,54 @@ export default function Help() {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Report a problem */}
+      <ReportProblemDialog open={reportOpen} onOpenChange={setReportOpen} />
     </div>
+  );
+}
+
+function ReportProblemDialog({ open, onOpenChange }) {
+  const [subject, setSubject] = useState("");
+  const [message, setMessage] = useState("");
+  const [sending, setSending] = useState(false);
+
+  const submit = async () => {
+    if (!subject.trim() || !message.trim()) {
+      toast.error("Merci de préciser un objet et un message");
+      return;
+    }
+    setSending(true);
+    try {
+      await api.post("/admin/support", { subject, message });
+      toast.success("Votre signalement a bien été envoyé, merci !");
+      setSubject(""); setMessage("");
+      onOpenChange(false);
+    } catch {
+      toast.error("Impossible d'envoyer le signalement");
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-lg" data-testid="report-problem-dialog">
+        <DialogHeader>
+          <DialogTitle>Signaler un problème</DialogTitle>
+        </DialogHeader>
+        <p className="text-sm text-slate-600 -mt-2">Un bug, une réclamation, une question urgente ? Décrivez-le ici, l'équipe ClubPaper est notifiée immédiatement.</p>
+        <div className="space-y-3">
+          <div><Label>Objet *</Label><Input value={subject} onChange={(e) => setSubject(e.target.value)} className="mt-1 h-11" placeholder="Ex. Erreur lors du paiement" data-testid="report-subject" /></div>
+          <div><Label>Message *</Label><Textarea rows={5} value={message} onChange={(e) => setMessage(e.target.value)} className="mt-1" placeholder="Décrivez le problème rencontré, ce que vous attendiez, et depuis quand." data-testid="report-message" /></div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)} className="rounded-full">Annuler</Button>
+          <Button onClick={submit} disabled={sending} className="rounded-full bg-red-600 hover:bg-red-700" data-testid="report-submit-btn">
+            {sending ? "Envoi…" : "Envoyer le signalement"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

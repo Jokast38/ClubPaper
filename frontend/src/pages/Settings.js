@@ -7,7 +7,8 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { extractColorsFromImage, fileToDataUrl, applyClubTheme } from "@/lib/colorExtractor";
 import { toast } from "sonner";
-import { Upload, Save, Globe, CreditCard, LogOut } from "lucide-react";
+import { Upload, Save, Globe, CreditCard, LogOut, AlertTriangle } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { useNavigate } from "react-router-dom";
 import IntegrationsPanel from "@/components/IntegrationsPanel";
 import SeasonSettingsPanel from "@/components/SeasonSettingsPanel";
@@ -18,6 +19,7 @@ import SignaturePad from "@/components/SignaturePad";
 
 export default function Settings() {
   const { club, refresh, logout } = useAuth();
+  const [deleteOpen, setDeleteOpen] = useState(false);
   const navigate = useNavigate();
   const [form, setForm] = useState({});
   const [theme, setTheme] = useState(null);
@@ -258,7 +260,7 @@ export default function Settings() {
         </div>
       </div>
 
-      <div className="paper-card p-6">
+      <div className="paper-card p-6 flex flex-wrap items-center justify-between gap-3">
         <Button variant="outline" onClick={async () => { await logout(); navigate("/"); }} data-testid="settings-logout-btn" className="rounded-full">
           <LogOut size={16} className="mr-2" />Se déconnecter
         </Button>
@@ -269,7 +271,68 @@ export default function Settings() {
       <CalendarSyncPanel />
       <NotificationsPanel />
       <IntegrationsPanel />
+
+      {/* Danger zone */}
+      <div className="paper-card p-6 border border-red-200">
+        <h3 className="font-display font-semibold text-lg text-red-700 flex items-center gap-2"><AlertTriangle size={20} />Zone dangereuse</h3>
+        <p className="text-sm text-slate-600 mt-1">Supprimer définitivement votre compte, votre club et toutes les données associées (adhérents, cotisations, planning, documents). Cette action est irréversible.</p>
+        <Button variant="outline" onClick={() => setDeleteOpen(true)} className="mt-4 rounded-full text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700" data-testid="settings-delete-account-btn">
+          Supprimer mon compte
+        </Button>
+      </div>
+
+      <DeleteAccountDialog open={deleteOpen} onOpenChange={setDeleteOpen} clubName={club?.name} />
     </div>
+  );
+}
+
+function DeleteAccountDialog({ open, onOpenChange, clubName }) {
+  const { logout } = useAuth();
+  const navigate = useNavigate();
+  const [confirmText, setConfirmText] = useState("");
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { if (!open) setConfirmText(""); }, [open]);
+
+  const doDelete = async () => {
+    setBusy(true);
+    try {
+      await api.delete("/auth/me");
+      toast.success("Votre compte a été supprimé.");
+      await logout();
+      navigate("/");
+    } catch {
+      toast.error("Impossible de supprimer le compte");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-md" data-testid="delete-account-dialog">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2 text-red-600"><AlertTriangle size={20} />Supprimer mon compte</DialogTitle>
+        </DialogHeader>
+        <p className="text-sm text-slate-600">
+          Cette action supprimera définitivement <b>{clubName || "votre club"}</b>, tous ses adhérents, cotisations, documents et l'historique associé. Impossible à annuler.
+        </p>
+        <div className="mt-2">
+          <Label>Tapez <b>SUPPRIMER</b> pour confirmer</Label>
+          <Input value={confirmText} onChange={(e) => setConfirmText(e.target.value)} className="mt-1 h-11" data-testid="delete-account-confirm-input" />
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)} className="rounded-full">Annuler</Button>
+          <Button
+            onClick={doDelete}
+            disabled={confirmText !== "SUPPRIMER" || busy}
+            className="rounded-full bg-red-600 hover:bg-red-700"
+            data-testid="delete-account-confirm-btn"
+          >
+            {busy ? "Suppression…" : "Supprimer définitivement"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

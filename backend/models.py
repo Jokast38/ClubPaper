@@ -36,6 +36,7 @@ class User(BaseModel):
     member_id: Optional[str] = None  # if role=member, links to Member record
     tour_seen: bool = False  # onboarding tour already shown — persisted so it doesn't reappear on another device
     tour_enabled: bool = True  # whether the guided tour is allowed to auto-start on first /app visit
+    is_platform_admin: bool = False  # ClubPaper's own operator — separate from a club's "admin" (bureau) role
     created_at: datetime = Field(default_factory=_now)
 
 
@@ -285,3 +286,22 @@ class PaymentTransaction(BaseModel):
     payment_status: str = "pending"
     created_at: datetime = Field(default_factory=_now)
     updated_at: datetime = Field(default_factory=_now)
+
+
+# ---------- Support tickets (complaints / bug reports raised from Aide) ----------
+class SupportTicketCreate(BaseModel):
+    subject: str
+    message: str
+
+
+class SupportTicket(SupportTicketCreate):
+    model_config = ConfigDict(extra="ignore")
+    id: str = Field(default_factory=_uid)
+    club_id: Optional[str] = None
+    club_name: str = ""
+    user_id: str
+    user_name: str = ""
+    user_email: str = ""
+    status: str = "new"  # new, replied, resolved
+    replies: List[dict] = Field(default_factory=list)  # [{from: "admin", message, created_at}]
+    created_at: datetime = Field(default_factory=_now)

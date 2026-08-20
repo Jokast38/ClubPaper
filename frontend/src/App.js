@@ -24,6 +24,7 @@ import PaymentSuccess from "@/pages/PaymentSuccess";
 import PaymentCancel from "@/pages/PaymentCancel";
 import PayFee from "@/pages/PayFee";
 import LegalPage from "@/pages/LegalPage";
+import AdminDashboard from "@/pages/AdminDashboard";
 import AppShell from "@/components/AppShell";
 import OnboardingTour from "@/components/OnboardingTour";
 
@@ -42,6 +43,14 @@ function Private({ children, needsClub = true }) {
   if (loading) return <div className="min-h-screen grid place-items-center text-slate-400">Chargement…</div>;
   if (!user) return <Navigate to="/login" replace />;
   if (needsClub && !club) return <Navigate to="/onboarding" replace />;
+  return children;
+}
+
+function PlatformAdminOnly({ children }) {
+  const { user, loading } = useAuth();
+  if (loading) return <div className="min-h-screen grid place-items-center text-slate-400">Chargement…</div>;
+  if (!user) return <Navigate to="/login" replace />;
+  if (!user.is_platform_admin) return <Navigate to="/app" replace />;
   return children;
 }
 
@@ -75,6 +84,7 @@ function App() {
           <Route path="/app/prospects" element={<Private><Shell><Prospects /></Shell></Private>} />
           <Route path="/app/blog" element={<Private><Shell><Blog /></Shell></Private>} />
           <Route path="/app/aide" element={<Private><Shell><Help /></Shell></Private>} />
+          <Route path="/app/admin" element={<Private needsClub={false}><PlatformAdminOnly><Shell><AdminDashboard /></Shell></PlatformAdminOnly></Private>} />
           <Route path="/legal/:doc" element={<LegalPage />} />
           <Route path="/c/:slug" element={<PublicClub />} />
           <Route path="/c/:slug/blog/:postSlug" element={<BlogPost />} />

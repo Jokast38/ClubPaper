@@ -1,5 +1,5 @@
 import { NavLink, useNavigate } from "react-router-dom";
-import { Home, Users, Wallet, CalendarDays, Megaphone, Settings as SettingsIcon, LogOut, UserPlus, Newspaper, HelpCircle } from "lucide-react";
+import { Home, Users, Wallet, CalendarDays, Megaphone, Settings as SettingsIcon, LogOut, UserPlus, Newspaper, HelpCircle, ShieldCheck } from "lucide-react";
 import { useAuth } from "@/lib/AuthContext";
 
 const nav = [
@@ -60,6 +60,13 @@ export default function AppShell({ children }) {
             style={({isActive}) => isActive ? {background: "var(--club-primary)"} : {}}>
             <SettingsIcon size={20} strokeWidth={2.5} /> Paramètres
           </NavLink>
+          {user?.is_platform_admin && (
+            <NavLink to="/app/admin" data-testid="sidebar-nav-admin"
+              className={({isActive}) => `flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition ${isActive ? "text-white shadow-sm" : "text-slate-700 hover:bg-slate-50"}`}
+              style={({isActive}) => isActive ? {background: "#0F172A"} : {}}>
+              <ShieldCheck size={20} strokeWidth={2.5} /> Admin plateforme
+            </NavLink>
+          )}
         </nav>
         <div className="p-4 border-t border-slate-100">
           <div className="text-xs text-slate-500 mb-2">{user?.name}</div>
