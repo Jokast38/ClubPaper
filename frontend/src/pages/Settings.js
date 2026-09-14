@@ -157,7 +157,7 @@ export default function Settings() {
             </p>
             {club.subscription_status !== "active" && (
               <Button className="mt-4 rounded-full h-11" style={{background:"var(--club-primary)"}} onClick={subscribe} data-testid="subscribe-btn">
-                <CreditCard size={18} className="mr-2" />Souscrire — 19€/mois
+                <CreditCard size={18} className="mr-2" />Souscrire — 29,99€/mois
               </Button>
             )}
           </div>

@@ -105,7 +105,7 @@ const SECTIONS = [
 ];
 
 const FAQ = [
-  { q: "Combien coûte ClubPaper ?", a: "19€/mois par club, avec 30 jours d'essai gratuit sans carte bancaire. Adhérents illimités." },
+  { q: "Combien coûte ClubPaper ?", a: "29,99€/mois par club, avec 30 jours d'essai gratuit sans carte bancaire. Adhérents illimités." },
   { q: "Mes données restent-elles privées ?", a: "Oui. Chaque club a ses données isolées. Aucune donnée n'est partagée entre clubs." },
   { q: "Puis-je exporter mes données si je pars ?", a: "Oui, tous vos adhérents et cotisations sont exportables au format CSV/Excel. Les reçus PDF restent téléchargeables." },
   { q: "Les SMS partent-ils depuis mon numéro ?", a: "Oui, si vous configurez Twilio dans Paramètres → Intégrations avec votre propre numéro Twilio." },

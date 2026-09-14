@@ -33,7 +33,7 @@ export default function Pricing() {
 
         <div className="mt-12 paper-card p-8 lg:p-10 text-left border-2 border-orange-200">
           <div className="flex items-baseline gap-2">
-            <span className="text-5xl font-display font-bold text-orange-600">19€</span>
+            <span className="text-5xl font-display font-bold text-orange-600">29,99€</span>
             <span className="text-slate-500">/ mois par club</span>
           </div>
           <p className="mt-3 text-slate-600">30 jours d'essai gratuit — pas de carte bancaire requise.</p>

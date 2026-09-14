@@ -14,7 +14,7 @@ def setup_catalog():
             "name": "ClubManager - Abonnement Club",
             "tax_code": "txcd_10103001",
             "prices": [
-                {"lookup_key": "clubmanager_monthly", "amount": 1900, "currency": "eur", "interval": "month"},
+                {"lookup_key": "clubmanager_monthly", "amount": 2999, "currency": "eur", "interval": "month"},
             ],
         },
     ]

@@ -134,7 +134,7 @@ function Overview({ stats }) {
       <div className="mt-6 paper-card p-6">
         <div className="flex items-center justify-between flex-wrap gap-2">
           <h3 className="font-display font-semibold text-lg text-slate-900">Évolution — inscriptions & CA estimé (12 derniers mois)</h3>
-          <span className="text-xs text-slate-400">CA estimé = clubs actifs × 19€/mois, pas un export comptable réel</span>
+          <span className="text-xs text-slate-400">CA estimé = clubs actifs × 29,99€/mois, pas un export comptable réel</span>
         </div>
         <div className="mt-6 h-72">
           <ResponsiveContainer width="100%" height="100%">

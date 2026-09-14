@@ -14,7 +14,7 @@ from email_utils import send_email, support_ticket_html, support_reply_html
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
-MONTHLY_PRICE_EUR = 19.0
+MONTHLY_PRICE_EUR = 29.99
 
 
 @router.get("/stats")
