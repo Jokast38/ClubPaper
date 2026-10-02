@@ -32,6 +32,7 @@ from routers import notifications as notifications_router
 from routers import drive as drive_router
 from routers import gcal as gcal_router
 from routers import admin as admin_router
+from routers import mailbox as mailbox_router
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger("clubmanager")
@@ -53,6 +54,7 @@ api.include_router(notifications_router.router)
 api.include_router(drive_router.router)
 api.include_router(gcal_router.router)
 api.include_router(admin_router.router)
+api.include_router(mailbox_router.router)
 
 
 @api.get("/")

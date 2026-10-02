@@ -40,6 +40,7 @@ class User(BaseModel):
     is_platform_admin: bool = False  # ClubPaper's own operator — separate from a club's "admin" (bureau) role
     is_sales_employee: bool = False  # sales rep — access to the leads call-tracking workspace, no club of their own
     pending_referral_code: Optional[str] = None  # carried from registration to club creation (onboarding)
+    email_signature: str = ""  # personal HTML signature, auto-appended when composing from the admin mailbox
     created_at: datetime = Field(default_factory=_now)
 
 
@@ -373,3 +374,34 @@ class Lead(LeadCreate):
     last_contacted_at: Optional[datetime] = None
     created_at: datetime = Field(default_factory=_now)
     updated_at: datetime = Field(default_factory=_now)
+
+
+# ---------- Personal admin mailbox (compose/send + templates) ----------
+class EmailTemplateCreate(BaseModel):
+    name: str
+    subject: str
+    body_html: str
+
+
+class EmailTemplate(EmailTemplateCreate):
+    model_config = ConfigDict(extra="ignore")
+    id: str = Field(default_factory=_uid)
+    user_id: str
+    created_at: datetime = Field(default_factory=_now)
+    updated_at: datetime = Field(default_factory=_now)
+
+
+class SentEmail(BaseModel):
+    """Record of an email sent from the personal admin mailbox (not the
+    transactional app emails in notification_logs)."""
+    model_config = ConfigDict(extra="ignore")
+    id: str = Field(default_factory=_uid)
+    user_id: str
+    to: List[str] = Field(default_factory=list)
+    cc: List[str] = Field(default_factory=list)
+    subject: str = ""
+    body_html: str = ""
+    attachments: List[dict] = Field(default_factory=list)  # [{filename, content_type, size}]
+    status: str = "sent"  # sent, error
+    error: str = ""
+    created_at: datetime = Field(default_factory=_now)

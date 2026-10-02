@@ -6,6 +6,7 @@ import asyncio
 import logging
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from email.mime.application import MIMEApplication
 
 import resend
 
@@ -47,6 +48,48 @@ def _send_via_smtp_sync(cfg: dict, to: str, subject: str, html: str, sender: str
             server.starttls(context=context)
             server.login(cfg["user"], cfg["password"])
             server.sendmail(sender, [to], msg.as_string())
+
+
+def _send_personal_email_sync(cfg: dict, sender: str, to: list, cc: list, subject: str, html: str, attachments: list):
+    """attachments: list of (filename, content_type, bytes)."""
+    msg = MIMEMultipart("mixed")
+    msg["Subject"] = subject
+    msg["From"] = sender
+    msg["To"] = ", ".join(to)
+    if cc:
+        msg["Cc"] = ", ".join(cc)
+    alt = MIMEMultipart("alternative")
+    alt.attach(MIMEText(html, "html"))
+    msg.attach(alt)
+    for filename, content_type, data in attachments:
+        part = MIMEApplication(data, Name=filename)
+        part["Content-Disposition"] = f'attachment; filename="{filename}"'
+        msg.attach(part)
+
+    recipients = to + cc
+    context = ssl.create_default_context()
+    if cfg["port"] == 465:
+        with smtplib.SMTP_SSL(cfg["host"], cfg["port"], context=context, timeout=30) as server:
+            server.login(cfg["user"], cfg["password"])
+            server.sendmail(sender, recipients, msg.as_string())
+    else:
+        with smtplib.SMTP(cfg["host"], cfg["port"], timeout=30) as server:
+            server.starttls(context=context)
+            server.login(cfg["user"], cfg["password"])
+            server.sendmail(sender, recipients, msg.as_string())
+
+
+async def send_personal_email(to: list, cc: list, subject: str, html: str, attachments: list, sender_name: str = ""):
+    """Send a one-off email from the personal admin mailbox (cc + real
+    attachments supported) — distinct from the transactional `send_email`
+    used for app notifications. Raises on failure (caller persists the
+    SentEmail record either way, with status reflecting the outcome)."""
+    cfg = _smtp_config()
+    if not cfg:
+        raise RuntimeError("SMTP n'est pas configuré (SMTP_HOST manquant).")
+    base_sender = _sender()
+    sender = f"{sender_name} <{base_sender}>" if sender_name else base_sender
+    await asyncio.to_thread(_send_personal_email_sync, cfg, sender, to, cc or [], subject, html, attachments)
 
 
 def _configure_resend():

@@ -1,5 +1,5 @@
 import { NavLink, useNavigate } from "react-router-dom";
-import { Home, Users, Wallet, CalendarDays, Megaphone, Settings as SettingsIcon, LogOut, UserPlus, Newspaper, HelpCircle, ShieldCheck, Phone } from "lucide-react";
+import { Home, Users, Wallet, CalendarDays, Megaphone, Settings as SettingsIcon, LogOut, UserPlus, Newspaper, HelpCircle, ShieldCheck, Phone, Mail } from "lucide-react";
 import { useAuth } from "@/lib/AuthContext";
 
 const nav = [
@@ -72,6 +72,13 @@ export default function AppShell({ children }) {
               className={({isActive}) => `flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition ${isActive ? "text-white shadow-sm" : "text-slate-700 hover:bg-slate-50"}`}
               style={({isActive}) => isActive ? {background: "#0F172A"} : {}}>
               <Phone size={20} strokeWidth={2.5} /> Leads (Commercial)
+            </NavLink>
+          )}
+          {user?.is_platform_admin && (
+            <NavLink to="/app/mail" data-testid="sidebar-nav-mail"
+              className={({isActive}) => `flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition ${isActive ? "text-white shadow-sm" : "text-slate-700 hover:bg-slate-50"}`}
+              style={({isActive}) => isActive ? {background: "#0F172A"} : {}}>
+              <Mail size={20} strokeWidth={2.5} /> Ma messagerie
             </NavLink>
           )}
           {user?.is_platform_admin && (

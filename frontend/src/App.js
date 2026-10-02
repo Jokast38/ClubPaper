@@ -26,6 +26,7 @@ import PayFee from "@/pages/PayFee";
 import LegalPage from "@/pages/LegalPage";
 import AdminDashboard from "@/pages/AdminDashboard";
 import LeadsWorkspace from "@/pages/LeadsWorkspace";
+import Mailbox from "@/pages/Mailbox";
 import AppShell from "@/components/AppShell";
 import OnboardingTour from "@/components/OnboardingTour";
 
@@ -95,6 +96,7 @@ function App() {
           <Route path="/app/aide" element={<Private><Shell><Help /></Shell></Private>} />
           <Route path="/app/admin" element={<Private needsClub={false}><PlatformAdminOnly><Shell><AdminDashboard /></Shell></PlatformAdminOnly></Private>} />
           <Route path="/app/leads" element={<Private needsClub={false}><SalesOnly><Shell><LeadsWorkspace /></Shell></SalesOnly></Private>} />
+          <Route path="/app/mail" element={<Private needsClub={false}><PlatformAdminOnly><Shell><Mailbox /></Shell></PlatformAdminOnly></Private>} />
           <Route path="/legal/:doc" element={<LegalPage />} />
           <Route path="/c/:slug" element={<PublicClub />} />
           <Route path="/c/:slug/blog/:postSlug" element={<BlogPost />} />
