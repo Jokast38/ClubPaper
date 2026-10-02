@@ -1,5 +1,5 @@
 """Pydantic models for ClubManager."""
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Optional, List
 from pydantic import BaseModel, EmailStr, Field, ConfigDict
 import uuid
@@ -19,6 +19,7 @@ class UserCreate(BaseModel):
     password: str = Field(min_length=6)
     name: str
     club_name: Optional[str] = None
+    referral_code: Optional[str] = None  # from ?ref=... on the register page; consumed when the club is created
 
 
 class UserLogin(BaseModel):
@@ -37,6 +38,7 @@ class User(BaseModel):
     tour_seen: bool = False  # onboarding tour already shown — persisted so it doesn't reappear on another device
     tour_enabled: bool = True  # whether the guided tour is allowed to auto-start on first /app visit
     is_platform_admin: bool = False  # ClubPaper's own operator — separate from a club's "admin" (bureau) role
+    pending_referral_code: Optional[str] = None  # carried from registration to club creation (onboarding)
     created_at: datetime = Field(default_factory=_now)
 
 
@@ -77,10 +79,28 @@ class Club(BaseModel):
     teams: List[str] = Field(default_factory=list)
     season: str = "2025-2026"
     default_fee: float = 150.0
-    subscription_status: str = "trial"  # trial, active, past_due
+    subscription_status: str = "trial"  # trial, active, past_due — kept for the admin dashboard; `plan` below is the real gate
     trial_ends_at: datetime = Field(default_factory=lambda: _now())
     stripe_customer_id: Optional[str] = None
     owner_id: str
+
+    # ---- Plan & billing lifecycle ----
+    plan: str = "trial"  # free, trial, paid — this is what every limit check reads
+    trial_started_at: datetime = Field(default_factory=_now)
+    commitment_started_at: Optional[datetime] = None  # set when the club picks "Engagement saison"
+    commitment_ends_at: Optional[datetime] = None      # resignation is blocked until this date
+    billing_mode: Optional[str] = None  # "monthly" or "season_upfront" once plan == "paid"
+    upgrade_prompt_count: int = 0  # how many times a free-plan limit has blocked this club — "hot lead" signal
+    trial_reminder_5_sent: bool = False  # idempotency flags for the daily trial-lifecycle job
+    trial_reminder_1_sent: bool = False
+
+    # ---- Referral program ----
+    referral_code: str = Field(default_factory=lambda: _uid()[:8].upper())
+    referred_by_club_id: Optional[str] = None
+    referral_reward_applied: bool = False  # true once converting THIS club has credited its referrer (no double-credit)
+    referral_credits_months: int = 0     # months already applied to this club's own billing as a referrer reward
+    referral_pending_credits: int = 0    # reward months earned while this club wasn't paid yet, applied once it converts
+
     created_at: datetime = Field(default_factory=_now)
 
 
@@ -304,4 +324,15 @@ class SupportTicket(SupportTicketCreate):
     user_email: str = ""
     status: str = "new"  # new, replied, resolved
     replies: List[dict] = Field(default_factory=list)  # [{from: "admin", message, created_at}]
+    created_at: datetime = Field(default_factory=_now)
+
+
+# ---------- Upgrade prompts (free-plan limits that blocked an action) ----------
+class UpgradePrompt(BaseModel):
+    """Logged every time a free-plan limit blocks an action — lets the platform
+    admin spot clubs that keep hitting a ceiling (prime upgrade candidates)."""
+    model_config = ConfigDict(extra="ignore")
+    id: str = Field(default_factory=_uid)
+    club_id: str
+    limit_type: str  # "payment_blocked", "sms_blocked", "announcement_limit", "member_limit"
     created_at: datetime = Field(default_factory=_now)

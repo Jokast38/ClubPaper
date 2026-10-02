@@ -3,7 +3,7 @@ import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip } from "recharts";
-import { Building2, Users, TrendingUp, Wallet, Mail, MessageSquare, CheckCircle2, RefreshCw, Trash2, Send } from "lucide-react";
+import { Building2, Users, TrendingUp, Wallet, Mail, MessageSquare, CheckCircle2, RefreshCw, Trash2, Send, Gift } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 
@@ -12,6 +12,7 @@ export default function AdminDashboard() {
   const [clubs, setClubs] = useState({ items: [], total: 0 });
   const [notifications, setNotifications] = useState([]);
   const [tickets, setTickets] = useState([]);
+  const [referrals, setReferrals] = useState([]);
   const [tab, setTab] = useState("overview");
 
   const loadStats = async () => {
@@ -30,13 +31,26 @@ export default function AdminDashboard() {
     const { data } = await api.get("/admin/support");
     setTickets(data);
   };
+  const loadReferrals = async () => {
+    const { data } = await api.get("/admin/referrals");
+    setReferrals(data);
+  };
 
-  useEffect(() => { loadStats(); loadClubs(); loadNotifications(); loadTickets(); }, []);
+  useEffect(() => { loadStats(); loadClubs(); loadNotifications(); loadTickets(); loadReferrals(); }, []);
 
   const updateSubscription = async (clubId, status) => {
     try {
       await api.put(`/admin/clubs/${clubId}/subscription`, { status });
       toast.success("Abonnement mis à jour");
+      loadClubs();
+      loadStats();
+    } catch { toast.error("Impossible de mettre à jour"); }
+  };
+
+  const updatePlan = async (clubId, plan) => {
+    try {
+      await api.put(`/admin/clubs/${clubId}/plan`, { plan });
+      toast.success("Plan mis à jour");
       loadClubs();
       loadStats();
     } catch { toast.error("Impossible de mettre à jour"); }
@@ -70,6 +84,7 @@ export default function AdminDashboard() {
     { id: "clubs", label: "Clubs & abonnements" },
     { id: "notifications", label: "Emails / SMS" },
     { id: "support", label: `Réclamations${tickets.filter(t => t.status === "new").length ? ` (${tickets.filter(t => t.status === "new").length})` : ""}` },
+    { id: "referrals", label: "Parrainage" },
   ];
 
   return (
@@ -98,9 +113,41 @@ export default function AdminDashboard() {
       </div>
 
       {tab === "overview" && stats && <Overview stats={stats} />}
-      {tab === "clubs" && <ClubsTab clubs={clubs} onUpdateStatus={updateSubscription} onDelete={deleteClub} />}
+      {tab === "clubs" && <ClubsTab clubs={clubs} onUpdateStatus={updateSubscription} onUpdatePlan={updatePlan} onDelete={deleteClub} />}
       {tab === "notifications" && <NotificationsTab notifications={notifications} />}
       {tab === "support" && <SupportTab tickets={tickets} onResolve={resolveTicket} onReply={replyTicket} />}
+      {tab === "referrals" && <ReferralsTab referrals={referrals} />}
+    </div>
+  );
+}
+
+function ReferralsTab({ referrals }) {
+  return (
+    <div className="mt-6 space-y-3">
+      {referrals.length === 0 && <p className="text-slate-500 text-sm">Aucun parrainage pour l'instant.</p>}
+      {referrals.map((r) => (
+        <div key={r.referrer_id} className="paper-card p-5" data-testid={`admin-referral-${r.referrer_id}`}>
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <div className="flex items-center gap-2">
+              <Gift size={16} className="text-orange-600" />
+              <span className="font-medium text-slate-900">{r.referrer_name}</span>
+              <span className="text-xs text-slate-400">({r.referral_code})</span>
+            </div>
+            <div className="flex gap-4 text-sm">
+              <span><b className="text-slate-900">{r.credits_applied}</b> <span className="text-slate-500">mois appliqués</span></span>
+              {r.credits_pending > 0 && <span><b className="text-amber-600">{r.credits_pending}</b> <span className="text-slate-500">en attente</span></span>}
+            </div>
+          </div>
+          <div className="mt-3 space-y-1.5">
+            {r.referred.map((c) => (
+              <div key={c.id} className="flex items-center justify-between text-sm px-3 py-1.5 rounded-lg bg-slate-50">
+                <span className="text-slate-700">{c.name}</span>
+                <span className={`pill-tag ${c.status === "converti" ? "status-paid" : "status-pending"}`}>{c.status}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
@@ -134,7 +181,7 @@ function Overview({ stats }) {
       <div className="mt-6 paper-card p-6">
         <div className="flex items-center justify-between flex-wrap gap-2">
           <h3 className="font-display font-semibold text-lg text-slate-900">Évolution — inscriptions & CA estimé (12 derniers mois)</h3>
-          <span className="text-xs text-slate-400">CA estimé = clubs actifs × 29,99€/mois, pas un export comptable réel</span>
+          <span className="text-xs text-slate-400">CA estimé = clubs actifs × 19,99€/mois, pas un export comptable réel</span>
         </div>
         <div className="mt-6 h-72">
           <ResponsiveContainer width="100%" height="100%">
@@ -157,10 +204,18 @@ function Overview({ stats }) {
         </div>
       </div>
 
-      <div className="mt-6 grid sm:grid-cols-3 gap-4">
+      <div className="mt-6 grid sm:grid-cols-3 lg:grid-cols-5 gap-4">
         <div className="paper-card p-5">
-          <div className="text-sm text-slate-500">En essai gratuit</div>
+          <div className="text-sm text-slate-500">En essai</div>
           <div className="mt-1 font-display font-bold text-xl text-slate-900">{stats.trial_clubs}</div>
+        </div>
+        <div className="paper-card p-5">
+          <div className="text-sm text-slate-500">Plan gratuit</div>
+          <div className="mt-1 font-display font-bold text-xl text-slate-900">{stats.free_clubs}</div>
+        </div>
+        <div className="paper-card p-5">
+          <div className="text-sm text-slate-500">Plan payant</div>
+          <div className="mt-1 font-display font-bold text-xl text-emerald-600">{stats.paid_clubs}</div>
         </div>
         <div className="paper-card p-5">
           <div className="text-sm text-slate-500">Paiement en retard</div>
@@ -178,7 +233,10 @@ function Overview({ stats }) {
 const STATUS_LABEL = { trial: "Essai", active: "Actif", past_due: "En retard" };
 const STATUS_CLASS = { trial: "status-pending", active: "status-paid", past_due: "status-overdue" };
 
-function ClubsTab({ clubs, onUpdateStatus, onDelete }) {
+const PLAN_LABEL = { free: "Gratuit", trial: "Essai", paid: "Payant" };
+const PLAN_CLASS = { free: "status-pending", trial: "status-pending", paid: "status-paid" };
+
+function ClubsTab({ clubs, onUpdateStatus, onUpdatePlan, onDelete }) {
   const [confirming, setConfirming] = useState(null);
   return (
     <div className="mt-6">
@@ -190,6 +248,15 @@ function ClubsTab({ clubs, onUpdateStatus, onDelete }) {
               <div className="font-medium text-slate-900 truncate">{c.name}</div>
               <div className="text-sm text-slate-500 truncate">{c.owner_email} · {c.members_count} adhérent{c.members_count > 1 ? "s" : ""} · {c.sport}{c.city ? ` · ${c.city}` : ""}</div>
             </div>
+            <span className={`pill-tag ${PLAN_CLASS[c.plan] || "status-pending"}`}>{PLAN_LABEL[c.plan] || c.plan}</span>
+            <Select value={c.plan || "trial"} onValueChange={(v) => onUpdatePlan(c.id, v)}>
+              <SelectTrigger className="h-10 w-[130px]" data-testid={`admin-club-plan-${c.id}`}><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="free">Gratuit</SelectItem>
+                <SelectItem value="trial">Essai</SelectItem>
+                <SelectItem value="paid">Payant</SelectItem>
+              </SelectContent>
+            </Select>
             <span className={`pill-tag ${STATUS_CLASS[c.subscription_status] || "status-pending"}`}>{STATUS_LABEL[c.subscription_status] || c.subscription_status}</span>
             <Select value={c.subscription_status} onValueChange={(v) => onUpdateStatus(c.id, v)}>
               <SelectTrigger className="h-10 w-[160px]" data-testid={`admin-club-status-${c.id}`}><SelectValue /></SelectTrigger>

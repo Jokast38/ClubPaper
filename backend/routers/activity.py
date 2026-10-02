@@ -10,6 +10,7 @@ from email_utils import send_email, announcement_html, session_change_html
 from sms_utils import send_sms, sms_configured, format_phone, announcement_sms, session_change_sms
 from sanitizer import sanitize_html
 from routers.gcal import sync_session_upsert, sync_session_delete
+from plan_limits import check_announcement_limit
 
 router = APIRouter(tags=["activity"])
 logger = logging.getLogger(__name__)
@@ -93,6 +94,7 @@ async def list_announcements(user: dict = Depends(current_user)):
 @router.post("/announcements")
 async def create_announcement(data: AnnouncementCreate, user: dict = Depends(current_user)):
     club = await get_user_club(user)
+    await check_announcement_limit(club)
     payload = data.model_dump()
     payload["body"] = sanitize_html(payload.get("body", ""))
     a = Announcement(

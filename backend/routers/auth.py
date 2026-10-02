@@ -17,7 +17,7 @@ async def register(data: UserCreate, response: Response):
     email = data.email.lower()
     if await db.users.find_one({"email": email}):
         raise HTTPException(400, "Un compte existe déjà avec cet email")
-    user = User(email=email, name=data.name, role="admin")
+    user = User(email=email, name=data.name, role="admin", pending_referral_code=(data.referral_code or "").strip().upper() or None)
     doc = serialize(user)
     doc["password_hash"] = hash_password(data.password)
     await db.users.insert_one(doc)
@@ -71,7 +71,8 @@ async def google_login(payload: dict, response: Response):
     db = get_db()
     user = await db.users.find_one({"email": email})
     if not user:
-        new_user = User(email=email, name=idinfo.get("name") or email.split("@")[0], role="admin")
+        ref_code = (payload.get("referral_code") or "").strip().upper() or None
+        new_user = User(email=email, name=idinfo.get("name") or email.split("@")[0], role="admin", pending_referral_code=ref_code)
         doc = serialize(new_user)
         doc["password_hash"] = ""
         await db.users.insert_one(doc)

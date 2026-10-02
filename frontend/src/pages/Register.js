@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -8,11 +8,22 @@ import { formatApiError } from "@/lib/api";
 import { toast } from "sonner";
 import GoogleSignInButton from "@/components/GoogleSignInButton";
 
+const REF_STORAGE_KEY = "cm_referral_code";
+
 export default function Register() {
   const { register, googleLogin } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [form, setForm] = useState({ name: "", email: "", password: "" });
   const [loading, setLoading] = useState(false);
+
+  // Capture ?ref=<code> once (e.g. landed on / or /tarifs first, link to /inscription later)
+  // and keep it across navigation until the account is actually created.
+  useEffect(() => {
+    const ref = searchParams.get("ref");
+    if (ref) sessionStorage.setItem(REF_STORAGE_KEY, ref.trim().toUpperCase());
+  }, [searchParams]);
+  const referralCode = sessionStorage.getItem(REF_STORAGE_KEY) || undefined;
 
   const update = (k) => (e) => setForm({ ...form, [k]: e.target.value });
 
@@ -20,7 +31,8 @@ export default function Register() {
     e.preventDefault();
     setLoading(true);
     try {
-      await register(form);
+      await register({ ...form, referral_code: referralCode });
+      sessionStorage.removeItem(REF_STORAGE_KEY);
       toast.success("Compte créé ! Passons au club.");
       navigate("/onboarding");
     } catch (err) {
@@ -33,7 +45,8 @@ export default function Register() {
   const onGoogleCredential = async (credential) => {
     setLoading(true);
     try {
-      await googleLogin(credential);
+      await googleLogin(credential, referralCode);
+      sessionStorage.removeItem(REF_STORAGE_KEY);
       toast.success("Compte créé ! Passons au club.");
       navigate("/onboarding");
     } catch (err) {
@@ -63,6 +76,11 @@ export default function Register() {
         <div className="w-full max-w-md">
           <h1 className="font-display font-bold text-3xl text-slate-900">Créer mon compte</h1>
           <p className="mt-2 text-slate-600">Déjà inscrit ? <Link to="/login" className="text-orange-600 font-medium" data-testid="link-login">Se connecter</Link></p>
+          {referralCode && (
+            <p className="mt-2 text-sm text-emerald-700 bg-emerald-50 rounded-lg px-3 py-2" data-testid="referral-banner">
+              Vous avez été invité par un club partenaire 🎉
+            </p>
+          )}
 
           <form onSubmit={onSubmit} className="mt-8 space-y-5">
             <div>

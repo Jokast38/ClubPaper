@@ -163,6 +163,81 @@ def support_reply_html(ticket: dict, reply_message: str) -> str:
 """
 
 
+def referral_signup_html(referrer_club_name: str, new_club_name: str) -> str:
+    return f"""
+<div style="font-family: -apple-system, sans-serif; max-width: 560px; margin: 0 auto; padding: 24px; color: #0f172a;">
+  <h2 style="color: #ea580c; margin: 0 0 12px;">Bonne nouvelle, {referrer_club_name} ! 🎉</h2>
+  <p><b>{new_club_name}</b> vient de créer son compte ClubPaper grâce à votre lien de parrainage.</p>
+  <p>Dès que {new_club_name} choisira l'abonnement, vous recevrez automatiquement <b>un mois offert</b> sur votre propre abonnement — aucune démarche à faire de votre côté.</p>
+  <p style="color: #64748b; font-size: 14px; margin-top:24px;">Merci de faire connaître ClubPaper autour de vous !</p>
+  <p style="color: #64748b; font-size: 14px;">L'équipe ClubPaper</p>
+</div>
+"""
+
+
+def referral_reward_html(referrer_club_name: str, referred_club_name: str, total_months: int) -> str:
+    return f"""
+<div style="font-family: -apple-system, sans-serif; max-width: 560px; margin: 0 auto; padding: 24px; color: #0f172a;">
+  <h2 style="color: #ea580c; margin: 0 0 12px;">Un mois offert pour {referrer_club_name} 🎁</h2>
+  <p><b>{referred_club_name}</b>, que vous avez parrainé, vient de choisir l'abonnement ClubPaper.</p>
+  <p>Comme promis, <b>un mois est offert</b> sur votre abonnement — il a été appliqué automatiquement. Vous avez maintenant {total_months} mois offert{'s' if total_months > 1 else ''} au total grâce au parrainage.</p>
+  <p style="color: #64748b; font-size: 14px; margin-top:24px;">Continuez à parrainer d'autres clubs depuis Paramètres pour cumuler encore plus de mois offerts.</p>
+  <p style="color: #64748b; font-size: 14px;">L'équipe ClubPaper</p>
+</div>
+"""
+
+
+def referral_pending_html(referrer_club_name: str, pending_months: int) -> str:
+    return f"""
+<div style="font-family: -apple-system, sans-serif; max-width: 560px; margin: 0 auto; padding: 24px; color: #0f172a;">
+  <h2 style="color: #ea580c; margin: 0 0 12px;">Un club que vous avez parrainé vient de s'abonner ! 🎉</h2>
+  <p>Bonjour {referrer_club_name},</p>
+  <p>Comme promis, un mois est offert sur votre futur abonnement. Vous êtes encore en plan gratuit ou en essai : ce mois sera appliqué automatiquement dès que vous choisirez l'abonnement vous-même.</p>
+  <p>Vous avez actuellement <b>{pending_months} mois offert{'s' if pending_months > 1 else ''}</b> en attente.</p>
+  <p style="color: #64748b; font-size: 14px; margin-top:24px;">L'équipe ClubPaper</p>
+</div>
+"""
+
+
+def trial_reminder_html(club_name: str, days_left: int, usage_line: str) -> str:
+    urgency = "se termine demain" if days_left <= 1 else f"se termine dans {days_left} jours"
+    return f"""
+<div style="font-family: -apple-system, sans-serif; max-width: 560px; margin: 0 auto; padding: 24px; color: #0f172a;">
+  <h2 style="color: #ea580c; margin: 0 0 12px;">Votre essai {urgency}</h2>
+  <p>Bonjour,</p>
+  <p>Votre essai gratuit de <b>{club_name}</b> {urgency}. Pas d'inquiétude : rien ne sera coupé brutalement, mais certaines fonctionnalités seront limitées si vous ne choisissez pas de formule.</p>
+  {f'<p style="background:#F8FAFC; border-radius:12px; padding:14px;">{usage_line}</p>' if usage_line else ''}
+  <table style="width:100%; border-collapse: collapse; margin-top:16px;">
+    <tr>
+      <td style="padding:12px; border:1px solid #E2E8F0; border-radius:8px; vertical-align:top;">
+        <b>Rester en gratuit</b><br/>
+        <span style="color:#64748b; font-size:13px;">25 adhérents max, 2 annonces/mois, pas de paiement en ligne ni de SMS.</span>
+      </td>
+      <td style="width:12px;"></td>
+      <td style="padding:12px; border:2px solid #EA580C; border-radius:8px; vertical-align:top;">
+        <b>Engagement saison</b><br/>
+        <span style="color:#64748b; font-size:13px;">19,99€/mois, sans limite, engagement 1 saison (6 mois).</span>
+      </td>
+    </tr>
+  </table>
+  <p style="margin-top:20px;">Rendez-vous dans Paramètres pour choisir votre formule.</p>
+  <p style="color: #64748b; font-size: 14px; margin-top:24px;">L'équipe ClubPaper</p>
+</div>
+"""
+
+
+def trial_ended_html(club_name: str) -> str:
+    return f"""
+<div style="font-family: -apple-system, sans-serif; max-width: 560px; margin: 0 auto; padding: 24px; color: #0f172a;">
+  <h2 style="color: #ea580c; margin: 0 0 12px;">Votre essai est terminé</h2>
+  <p>Bonjour,</p>
+  <p>L'essai gratuit de <b>{club_name}</b> est terminé. Votre club reste pleinement accessible, en plan gratuit : jusqu'à 25 adhérents, 2 annonces par mois, sans paiement en ligne ni SMS.</p>
+  <p>Vous pouvez passer à l'abonnement « Engagement saison » à tout moment depuis Paramètres pour débloquer toutes les fonctionnalités.</p>
+  <p style="color: #64748b; font-size: 14px; margin-top:24px;">L'équipe ClubPaper</p>
+</div>
+"""
+
+
 def reminder_html(club_name: str, member_name: str, amount: float, pay_url: str, level: int) -> str:
     intros = {
         1: "Petit rappel amical",

@@ -14,7 +14,7 @@ from email_utils import send_email, support_ticket_html, support_reply_html
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
-MONTHLY_PRICE_EUR = 29.99
+MONTHLY_PRICE_EUR = 19.99
 
 
 @router.get("/stats")
@@ -27,6 +27,8 @@ async def stats(user: dict = Depends(platform_admin_user)):
     active_clubs = await db.clubs.count_documents({"subscription_status": "active"})
     trial_clubs = await db.clubs.count_documents({"subscription_status": "trial"})
     past_due_clubs = await db.clubs.count_documents({"subscription_status": "past_due"})
+    free_clubs = await db.clubs.count_documents({"plan": "free"})
+    paid_clubs = await db.clubs.count_documents({"plan": "paid"})
     mrr = active_clubs * MONTHLY_PRICE_EUR
 
     # Signups + estimated cumulative MRR per month, last 12 months.
@@ -69,9 +71,50 @@ async def stats(user: dict = Depends(platform_admin_user)):
         "active_clubs": active_clubs,
         "trial_clubs": trial_clubs,
         "past_due_clubs": past_due_clubs,
+        "free_clubs": free_clubs,
+        "paid_clubs": paid_clubs,
         "mrr_estimate": mrr,
         "chart": chart,
     }
+
+
+@router.get("/referrals")
+async def referral_overview(user: dict = Depends(platform_admin_user)):
+    """Referrer → referred-club(s) table, for spotting the best ambassadors."""
+    db = get_db()
+    referrers = await db.clubs.find(
+        {"$or": [{"referral_credits_months": {"$gt": 0}}, {"referral_pending_credits": {"$gt": 0}}]},
+        {"_id": 0, "id": 1},
+    ).to_list(1000)
+    referrer_ids = {c["id"] for c in referrers}
+    all_referred = await db.clubs.find(
+        {"referred_by_club_id": {"$ne": None}},
+        {"_id": 0, "id": 1, "name": 1, "plan": 1, "created_at": 1, "referred_by_club_id": 1},
+    ).to_list(5000)
+    referrer_ids.update(c["referred_by_club_id"] for c in all_referred)
+
+    referrer_clubs = await db.clubs.find(
+        {"id": {"$in": list(referrer_ids)}}, {"_id": 0, "id": 1, "name": 1, "referral_code": 1, "referral_credits_months": 1, "referral_pending_credits": 1},
+    ).to_list(len(referrer_ids) or 1)
+
+    rows = []
+    for rc in referrer_clubs:
+        referred = [c for c in all_referred if c.get("referred_by_club_id") == rc["id"]]
+        if not referred:
+            continue
+        rows.append({
+            "referrer_id": rc["id"],
+            "referrer_name": rc["name"],
+            "referral_code": rc.get("referral_code", ""),
+            "credits_applied": rc.get("referral_credits_months", 0),
+            "credits_pending": rc.get("referral_pending_credits", 0),
+            "referred": [
+                {"id": c["id"], "name": c["name"], "status": "converti" if c.get("plan") == "paid" else "en attente", "created_at": c.get("created_at")}
+                for c in referred
+            ],
+        })
+    rows.sort(key=lambda r: len(r["referred"]), reverse=True)
+    return rows
 
 
 @router.get("/clubs")
@@ -120,6 +163,22 @@ async def update_subscription(club_id: str, payload: dict, user: dict = Depends(
     if result.matched_count == 0:
         raise HTTPException(404, "Club introuvable")
     return {"ok": True, "status": status}
+
+
+@router.put("/clubs/{club_id}/plan")
+async def override_plan(club_id: str, payload: dict, user: dict = Depends(platform_admin_user)):
+    """Manual plan override (support / edge cases) — bypasses the normal trial/checkout flow."""
+    plan = payload.get("plan")
+    if plan not in {"free", "trial", "paid"}:
+        raise HTTPException(400, "Plan invalide")
+    db = get_db()
+    update = {"plan": plan}
+    if plan == "paid":
+        update["subscription_status"] = "active"
+    result = await db.clubs.update_one({"id": club_id}, {"$set": update})
+    if result.matched_count == 0:
+        raise HTTPException(404, "Club introuvable")
+    return {"ok": True, "plan": plan}
 
 
 @router.get("/users")

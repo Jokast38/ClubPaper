@@ -14,7 +14,9 @@ def setup_catalog():
             "name": "ClubManager - Abonnement Club",
             "tax_code": "txcd_10103001",
             "prices": [
-                {"lookup_key": "clubmanager_monthly", "amount": 2999, "currency": "eur", "interval": "month"},
+                {"lookup_key": "clubmanager_monthly", "amount": 1999, "currency": "eur", "interval": "month"},
+                # Engagement saison payé en une fois : 4 mois facturés pour 6 mois d'accès (2 mois offerts).
+                {"lookup_key": "clubmanager_season_upfront", "amount": 7996, "currency": "eur"},
             ],
         },
     ]

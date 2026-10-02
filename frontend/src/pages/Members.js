@@ -120,7 +120,11 @@ export default function Members() {
     const endpoint = isXlsx ? "/members/import-xlsx" : "/members/import";
     try {
       const { data } = await api.post(endpoint, fd, { headers: { "Content-Type": "multipart/form-data" }});
-      toast.success(`${data.imported} adhérent(s) importé(s)${data.errors ? `, ${data.errors} ligne(s) ignorée(s)` : ""}`);
+      if (data.message) {
+        toast.warning(`${data.imported} adhérent(s) importé(s). ${data.message}`);
+      } else {
+        toast.success(`${data.imported} adhérent(s) importé(s)${data.errors ? `, ${data.errors} ligne(s) ignorée(s)` : ""}`);
+      }
       load();
     } catch (err) {
       toast.error("Import impossible : vérifiez le format du fichier");
@@ -357,7 +361,7 @@ function MemberDialog({ open, onOpenChange, editing, onSaved }) {
       }
       onSaved();
     } catch (err) {
-      toast.error("Impossible d'enregistrer");
+      toast.error(err.response?.data?.detail || "Impossible d'enregistrer");
     }
   };
 

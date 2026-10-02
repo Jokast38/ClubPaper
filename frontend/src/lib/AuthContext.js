@@ -24,8 +24,8 @@ export function AuthProvider({ children }) {
     return data;
   };
 
-  const googleLogin = async (credential) => {
-    const { data } = await api.post("/auth/google", { credential });
+  const googleLogin = async (credential, referralCode) => {
+    const { data } = await api.post("/auth/google", { credential, referral_code: referralCode });
     if (data.token) localStorage.setItem("cm_token", data.token);
     await refresh();
     return data;

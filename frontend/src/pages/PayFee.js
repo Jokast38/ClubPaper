@@ -27,7 +27,7 @@ export default function PayFee() {
         origin_url: window.location.origin,
       });
       window.location.href = res.checkout_url;
-    } catch { toast.error("Impossible de démarrer le paiement"); setBusy(false); }
+    } catch (err) { toast.error(err.response?.data?.detail || "Impossible de démarrer le paiement"); setBusy(false); }
   };
 
   if (error) return <div className="min-h-screen grid place-items-center text-slate-600">Cotisation introuvable.</div>;

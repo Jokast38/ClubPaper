@@ -14,6 +14,7 @@ from storage import put_object, get_object, build_path, MIME_TYPES
 from xlsx_import import parse_xlsx
 from pdf_utils import receipt_pdf, member_sheet_pdf, license_pdf
 from routers.drive import export_member_document
+from plan_limits import check_member_limit, FREE_MEMBER_LIMIT
 
 router = APIRouter(tags=["members"])
 logger = logging.getLogger(__name__)
@@ -91,6 +92,7 @@ async def delete_all_members(user: dict = Depends(current_user)):
 @router.post("/members")
 async def create_member(data: MemberCreate, user: dict = Depends(current_user)):
     club = await get_user_club(user)
+    await check_member_limit(club)
     m = Member(**data.model_dump(), club_id=club["id"])
     await get_db().members.insert_one(serialize(m))
     return m.model_dump()
@@ -125,7 +127,11 @@ async def import_members(file: UploadFile = File(...), user: dict = Depends(curr
     reader = csv.DictReader(io.StringIO(text))
     imported = 0
     errors = 0
+    limit_reached = False
     for row in reader:
+        if limit_reached:
+            errors += 1
+            continue
         try:
             row_lower = {k.lower().strip(): (v or "").strip() for k, v in row.items() if k}
             fn = row_lower.get("prenom") or row_lower.get("prénom") or row_lower.get("first_name") or row_lower.get("firstname")
@@ -133,6 +139,7 @@ async def import_members(file: UploadFile = File(...), user: dict = Depends(curr
             if not fn or not ln:
                 errors += 1
                 continue
+            await check_member_limit(club)
             m = Member(
                 first_name=fn, last_name=ln,
                 email=row_lower.get("email", ""),
@@ -145,9 +152,15 @@ async def import_members(file: UploadFile = File(...), user: dict = Depends(curr
             )
             await db.members.insert_one(serialize(m))
             imported += 1
+        except HTTPException:
+            limit_reached = True
+            errors += 1
         except Exception:
             errors += 1
-    return {"imported": imported, "errors": errors}
+    message = None
+    if limit_reached:
+        message = f"Limite de {FREE_MEMBER_LIMIT} adhérents du plan gratuit atteinte — import partiel."
+    return {"imported": imported, "errors": errors, "message": message}
 
 
 @router.post("/members/import-xlsx")
@@ -160,14 +173,21 @@ async def import_members_xlsx(file: UploadFile = File(...), user: dict = Depends
     except Exception:
         raise HTTPException(400, "Fichier Excel invalide")
     imported = 0
+    limit_reached = False
     for rec in records:
+        if limit_reached:
+            continue
         try:
+            await check_member_limit(club)
             m = Member(**rec, club_id=club["id"])
             await db.members.insert_one(serialize(m))
             imported += 1
+        except HTTPException:
+            limit_reached = True
         except Exception:
             continue
-    return {"imported": imported, "errors": max(0, len(records) - imported)}
+    message = f"Limite de {FREE_MEMBER_LIMIT} adhérents du plan gratuit atteinte — import partiel." if limit_reached else None
+    return {"imported": imported, "errors": max(0, len(records) - imported), "message": message}
 
 
 # ---- Documents ----

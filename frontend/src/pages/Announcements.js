@@ -34,7 +34,7 @@ export default function Announcements() {
       setForm({ title: "", body: "", audience: "all", send_email: true });
       setOpen(false);
       load();
-    } catch { toast.error("Impossible de publier"); }
+    } catch (err) { toast.error(err.response?.data?.detail || "Impossible de publier"); }
   };
 
   return (

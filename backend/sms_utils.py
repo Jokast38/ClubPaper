@@ -29,6 +29,15 @@ async def send_sms(club: dict, to: str, body: str, *, kind: str = "") -> dict:
     if not to:
         await log_notification(channel="sms", status="skipped", to="", subject=body[:80], club_id=club_id, kind=kind, error="no phone")
         return {"status": "skipped", "reason": "no phone"}
+    if (club or {}).get("plan", "trial") == "free":
+        # Free plan: email only — SMS is a paid-plan feature.
+        await log_notification(channel="sms", status="skipped", to=to, subject=body[:80], club_id=club_id, kind=kind, error="plan gratuit")
+        try:
+            from plan_limits import log_upgrade_prompt
+            await log_upgrade_prompt(club_id, "sms_blocked")
+        except Exception:
+            pass
+        return {"status": "skipped", "reason": "plan gratuit"}
     sid, token, from_phone, enabled = _get_creds(club)
     if not enabled:
         logger.info("[SMS SKIPPED - twilio disabled] to=%s", to)

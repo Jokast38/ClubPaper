@@ -41,7 +41,7 @@ Stack : **FastAPI (Python) + MongoDB** côté backend, **React 19 (CRA/Craco) + 
 
 ### Cotisations
 - Suivi des paiements (en attente / payé / en retard), relances automatiques (email + SMS).
-- Paiement en ligne via Stripe (checkout, webhook, page de succès/annulation). Abonnement plateforme : 29,99 €/mois par club.
+- Paiement en ligne via Stripe (checkout, webhook, page de succès/annulation). Abonnement plateforme : 19,99 €/mois par club (engagement saison, 6 mois), ou 79,96 € en une fois (2 mois offerts).
 
 ### Planning
 - Créneaux (entraînements / matchs) avec équipe, lieu, horaires.
@@ -272,7 +272,7 @@ Au premier démarrage, le backend crée les index MongoDB nécessaires, seed le 
 
 ### Stripe
 
-Mode test recommandé pour le développement. Le catalogue (produit + prix `clubmanager_monthly`, 29,99 €/mois) est créé/mis à jour automatiquement au démarrage par `setup_stripe.py` si `STRIPE_SECRET_KEY` est configuré.
+Mode test recommandé pour le développement. Le catalogue (produit + prix `clubmanager_monthly` à 19,99 €/mois et `clubmanager_season_upfront` à 79,96 € en une fois) est créé/mis à jour automatiquement au démarrage par `setup_stripe.py` si `STRIPE_SECRET_KEY` est configuré.
 
 ### Email (SMTP / Resend)
 

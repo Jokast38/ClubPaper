@@ -106,6 +106,19 @@ async def _seed_admin(db):
     logger.info("Seeded platform admin account: %s", email)
 
 
+async def _backfill_referral_codes(db):
+    """One-time migration: clubs created before the referral program need a
+    referral_code to be shareable, and a `plan` consistent with their
+    existing subscription_status (so free-plan limits apply sensibly)."""
+    import uuid
+    async for club in db.clubs.find({"referral_code": {"$exists": False}}, {"_id": 0, "id": 1}):
+        await db.clubs.update_one({"id": club["id"]}, {"$set": {"referral_code": uuid.uuid4().hex[:8].upper()}})
+    # Legacy clubs with no `plan` field: infer it from subscription_status so
+    # an already-active paying club isn't suddenly capped as free.
+    await db.clubs.update_many({"plan": {"$exists": False}, "subscription_status": "active"}, {"$set": {"plan": "paid"}})
+    await db.clubs.update_many({"plan": {"$exists": False}}, {"$set": {"plan": "trial"}})
+
+
 @app.on_event("startup")
 async def startup():
     db = get_db()
@@ -118,6 +131,7 @@ async def startup():
     await db.blog_posts.create_index([("club_id", 1), ("slug", 1)], unique=True)
 
     await _seed_admin(db)
+    await _backfill_referral_codes(db)
 
     try:
         await asyncio.to_thread(setup_catalog)

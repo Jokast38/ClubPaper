@@ -15,7 +15,13 @@ router = APIRouter(prefix="/public", tags=["public"])
 @router.get("/clubs/{slug}")
 async def public_club(slug: str):
     db = get_db()
-    club = await db.clubs.find_one({"slug": slug}, {"_id": 0, "owner_id": 0, "stripe_customer_id": 0})
+    club = await db.clubs.find_one({"slug": slug}, {
+        "_id": 0, "owner_id": 0, "stripe_customer_id": 0,
+        "referred_by_club_id": 0, "referral_reward_applied": 0,
+        "referral_credits_months": 0, "referral_pending_credits": 0,
+        "commitment_started_at": 0, "commitment_ends_at": 0, "billing_mode": 0,
+        "upgrade_prompt_count": 0,
+    })
     if not club:
         raise HTTPException(404, "Club introuvable")
     club["members_count"] = await db.members.count_documents({"club_id": club["id"]})

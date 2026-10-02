@@ -155,9 +155,11 @@ export default function PublicClub() {
         </section>
       )}
 
-      <footer className="py-8 text-center text-sm text-slate-500">
-        Propulsé par <a href="/" className="font-medium">ClubPaper</a>
-      </footer>
+      {club.plan !== "paid" && (
+        <footer className="py-8 text-center text-sm text-slate-500">
+          Propulsé par <a href="/" className="font-medium">ClubPaper</a>
+        </footer>
+      )}
     </div>
   );
 }

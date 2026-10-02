@@ -2,7 +2,7 @@
 import os
 import asyncio
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from fastapi import APIRouter, HTTPException, Request, Depends
 
 import stripe
@@ -10,11 +10,15 @@ import stripe
 from models import Fee, CheckoutRequest, PaymentTransaction
 from database import get_db
 from deps import current_user, get_user_club, serialize
-from email_utils import send_email, reminder_html
+from email_utils import send_email, reminder_html, referral_reward_html, referral_pending_html
 from sms_utils import send_sms, sms_configured, format_phone, reminder_sms
+from plan_limits import check_payment_allowed
 
 router = APIRouter(tags=["fees"])
 logger = logging.getLogger(__name__)
+
+MONTHLY_PRICE_CENTS = 1999          # clubmanager_monthly — kept in sync with setup_stripe.py
+SEASON_UPFRONT_PRICE_CENTS = 7996   # clubmanager_season_upfront — 4 months billed, 6 months of access
 
 
 # ---- Fees ----
@@ -149,6 +153,7 @@ async def create_checkout(req: CheckoutRequest, request: Request):
             if not fee:
                 raise HTTPException(404, "Cotisation introuvable")
             club = await db.clubs.find_one({"id": fee["club_id"]}, {"_id": 0})
+            await check_payment_allowed(club)
             member = await db.members.find_one({"id": fee["member_id"]}, {"_id": 0})
             amount_cents = int(round(fee["amount"] * 100))
             session = stripe.checkout.Session.create(
@@ -203,6 +208,98 @@ async def create_checkout(req: CheckoutRequest, request: Request):
         raise HTTPException(500, "Impossible de créer la session de paiement")
 
 
+async def _activate_club_subscription(db, club_id: str, lookup_key: str, stripe_customer_id: str = None):
+    """Called once per club when a 'clubmanager_*' checkout actually completes.
+
+    Switches the club to the paid plan with its season commitment, and —
+    if this club was referred by another — applies the referrer's reward
+    (one free month), crediting their next Stripe invoice via a balance
+    adjustment rather than a manual date calculation.
+    """
+    club = await db.clubs.find_one({"id": club_id}, {"_id": 0})
+    if not club or club.get("plan") == "paid":
+        return  # already activated — avoid double-crediting a referrer on a retry
+    now = datetime.now(timezone.utc)
+    billing_mode = "season_upfront" if "season_upfront" in (lookup_key or "") else "monthly"
+    update = {
+        "plan": "paid",
+        "subscription_status": "active",
+        "commitment_started_at": now.isoformat(),
+        "commitment_ends_at": (now + timedelta(days=182)).isoformat(),
+        "billing_mode": billing_mode,
+    }
+    if stripe_customer_id:
+        update["stripe_customer_id"] = stripe_customer_id
+    await db.clubs.update_one({"id": club_id}, {"$set": update})
+    if stripe_customer_id:
+        club["stripe_customer_id"] = stripe_customer_id
+
+    # This club may itself have been accumulating referral rewards while it
+    # was free/trial (as a referrer) — apply them now that it has billing set up.
+    pending = club.get("referral_pending_credits", 0)
+    if pending and club.get("stripe_customer_id"):
+        try:
+            price = SEASON_UPFRONT_PRICE_CENTS if billing_mode == "season_upfront" else MONTHLY_PRICE_CENTS
+            stripe.Customer.create_balance_transaction(
+                club["stripe_customer_id"],
+                amount=-price * pending,
+                currency="eur",
+                description=f"Parrainage ClubPaper — {pending} mois offert(s) en attente",
+            )
+            await db.clubs.update_one({"id": club_id}, {"$set": {"referral_pending_credits": 0}, "$inc": {"referral_credits_months": pending}})
+        except stripe.error.StripeError as e:
+            logger.warning("pending referral credit application failed for %s: %s", club_id, e)
+
+    referrer_id = club.get("referred_by_club_id")
+    if referrer_id and not club.get("referral_reward_applied"):
+        await db.clubs.update_one({"id": club_id}, {"$set": {"referral_reward_applied": True}})
+        referrer = await db.clubs.find_one({"id": referrer_id}, {"_id": 0})
+        if referrer:
+            await _grant_referral_month(db, referrer)
+
+
+async def _grant_referral_month(db, referrer: dict):
+    """Credit one free month to a referring club — applied immediately via a
+    Stripe customer balance credit if they're already paying, otherwise
+    banked as a pending credit until they convert themselves."""
+    applied = False
+    new_total = referrer.get("referral_credits_months", 0)
+
+    if referrer.get("plan") == "paid" and referrer.get("stripe_customer_id"):
+        try:
+            price = MONTHLY_PRICE_CENTS
+            if referrer.get("billing_mode") == "season_upfront":
+                price = SEASON_UPFRONT_PRICE_CENTS
+            stripe.Customer.create_balance_transaction(
+                referrer["stripe_customer_id"],
+                amount=-price,  # negative = credit, applied to the next invoice
+                currency="eur",
+                description="Parrainage ClubPaper — 1 mois offert",
+            )
+            new_total += 1
+            await db.clubs.update_one({"id": referrer["id"]}, {"$set": {"referral_credits_months": new_total}})
+            applied = True
+        except stripe.error.StripeError as e:
+            logger.warning("referral Stripe credit failed for %s: %s", referrer["id"], e)
+
+    if not applied:
+        # Not paying (yet), or the Stripe credit failed — bank it rather than lose the reward.
+        await db.clubs.update_one({"id": referrer["id"]}, {"$inc": {"referral_pending_credits": 1}})
+
+    owner = await db.users.find_one({"id": referrer.get("owner_id")}, {"_id": 0, "email": 1})
+    to = referrer.get("email") or (owner or {}).get("email", "")
+    if to:
+        if applied:
+            html = referral_reward_html(referrer.get("name", ""), "un club que vous avez parrainé", new_total)
+        else:
+            pending = referrer.get("referral_pending_credits", 0) + 1
+            html = referral_pending_html(referrer.get("name", ""), pending)
+        asyncio.create_task(send_email(
+            to, "Un mois offert grâce au parrainage 🎁", html,
+            club_id=referrer["id"], kind="referral_reward",
+        ))
+
+
 @router.get("/payments/status/{session_id}")
 async def payment_status(session_id: str):
     db = get_db()
@@ -224,7 +321,7 @@ async def payment_status(session_id: str):
                 if record.get("fee_id"):
                     await db.fees.update_one({"id": record["fee_id"]}, {"$set": {"status": "paid", "paid_at": now}})
                 if record.get("lookup_key") and record.get("club_id"):
-                    await db.clubs.update_one({"id": record["club_id"]}, {"$set": {"subscription_status": "active"}})
+                    await _activate_club_subscription(db, record["club_id"], record["lookup_key"], s.customer)
                 record = await db.payment_transactions.find_one({"session_id": session_id}, {"_id": 0})
         except stripe.error.StripeError as e:
             logger.warning("stripe retrieve failed: %s", e)
@@ -256,5 +353,5 @@ async def stripe_webhook(request: Request):
             if record and record.get("fee_id"):
                 await db.fees.update_one({"id": record["fee_id"]}, {"$set": {"status": "paid", "paid_at": now}})
             if record and record.get("lookup_key") and record.get("club_id"):
-                await db.clubs.update_one({"id": record["club_id"]}, {"$set": {"subscription_status": "active"}})
+                await _activate_club_subscription(db, record["club_id"], record["lookup_key"], obj.get("customer"))
     return {"status": "ok"}
