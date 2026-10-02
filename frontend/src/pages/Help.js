@@ -46,7 +46,8 @@ const SECTIONS = [
     title: "Cotisations & paiements",
     intro: "Générez les cotisations de la saison, encaissez en ligne, relancez automatiquement.",
     steps: [
-      { title: "Générer les cotisations", body: "Menu Cotisations → Générer les cotisations. Une ligne est créée pour chaque adhérent avec le montant par défaut du club.", shot: "08-fees.jpg" },
+      { title: "Configurer le prix de la cotisation", body: "Paramètres → Informations du club → « Cotisation par défaut (€) ». C'est ce montant qui est utilisé pour tous les adhérents, sauf exception. Pour un montant différent sur un adhérent précis (tarif réduit, fratrie…), renseignez son propre montant dans le champ « Cotisation (€) » de sa fiche — il prend alors le pas sur le tarif par défaut du club.", shot: "08b-fee-price.jpg" },
+      { title: "Générer les cotisations", body: "Menu Cotisations → Générer les cotisations. Une ligne est créée pour chaque adhérent avec son montant (personnalisé si renseigné, sinon le tarif par défaut du club), échéance à 30 jours. Peut être recliqué sans risque : les cotisations déjà générées pour la saison ne sont jamais dupliquées.", shot: "08-fees.jpg" },
       { title: "Paiement en ligne (Stripe)", body: "Les adhérents payent en 2 clics via le lien envoyé par email. Le reçu PDF est disponible dès que le paiement est confirmé.", shot: "09-pay.jpg" },
       { title: "Relances automatiques", body: "J+7, J+15, J+30 après création : email + SMS (si Twilio activé) envoyés automatiquement chaque matin à 9h.", shot: "10-reminders.jpg" },
     ],
