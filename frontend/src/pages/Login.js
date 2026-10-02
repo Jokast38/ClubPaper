@@ -19,9 +19,9 @@ export default function Login() {
     e.preventDefault();
     setLoading(true);
     try {
-      await login(email, password);
+      const data = await login(email, password);
       toast.success("Bienvenue !");
-      navigate("/app");
+      navigate(data.user?.is_sales_employee ? "/app/leads" : "/app");
     } catch (err) {
       toast.error(formatApiError(err.response?.data?.detail) || err.message);
     } finally {
@@ -32,9 +32,9 @@ export default function Login() {
   const onGoogleCredential = async (credential) => {
     setLoading(true);
     try {
-      await googleLogin(credential);
+      const data = await googleLogin(credential);
       toast.success("Bienvenue !");
-      navigate("/app");
+      navigate(data.user?.is_sales_employee ? "/app/leads" : "/app");
     } catch (err) {
       toast.error(formatApiError(err.response?.data?.detail) || err.message);
     } finally {

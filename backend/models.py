@@ -38,8 +38,15 @@ class User(BaseModel):
     tour_seen: bool = False  # onboarding tour already shown — persisted so it doesn't reappear on another device
     tour_enabled: bool = True  # whether the guided tour is allowed to auto-start on first /app visit
     is_platform_admin: bool = False  # ClubPaper's own operator — separate from a club's "admin" (bureau) role
+    is_sales_employee: bool = False  # sales rep — access to the leads call-tracking workspace, no club of their own
     pending_referral_code: Optional[str] = None  # carried from registration to club creation (onboarding)
     created_at: datetime = Field(default_factory=_now)
+
+
+class EmployeeCreate(BaseModel):
+    email: EmailStr
+    password: str = Field(min_length=6)
+    name: str
 
 
 # ---------- Club ----------
@@ -336,3 +343,33 @@ class UpgradePrompt(BaseModel):
     club_id: str
     limit_type: str  # "payment_blocked", "sms_blocked", "announcement_limit", "member_limit"
     created_at: datetime = Field(default_factory=_now)
+
+
+# ---------- Sales leads (prospecting CSV import + call tracking) ----------
+LEAD_STATUSES = ["new", "interested", "not_interested", "converted", "unreachable"]
+
+
+class LeadCreate(BaseModel):
+    name: str
+    email: Optional[str] = ""
+    phone: Optional[str] = ""
+    address: Optional[str] = ""
+    postal_code: Optional[str] = ""
+    city: Optional[str] = ""
+    website: Optional[str] = ""
+    description: Optional[str] = ""  # the RNA "objet" free-text field, useful context for the caller
+    source: str = "import"
+    external_id: Optional[str] = ""  # e.g. id_rna, used to de-duplicate re-imports
+
+
+class Lead(LeadCreate):
+    model_config = ConfigDict(extra="ignore")
+    id: str = Field(default_factory=_uid)
+    status: str = "new"  # new, interested, not_interested, converted, unreachable
+    notes: str = ""
+    assigned_to_user_id: Optional[str] = None
+    assigned_to_name: str = ""
+    campaign_sent_at: Optional[datetime] = None
+    last_contacted_at: Optional[datetime] = None
+    created_at: datetime = Field(default_factory=_now)
+    updated_at: datetime = Field(default_factory=_now)

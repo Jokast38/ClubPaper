@@ -25,6 +25,7 @@ import PaymentCancel from "@/pages/PaymentCancel";
 import PayFee from "@/pages/PayFee";
 import LegalPage from "@/pages/LegalPage";
 import AdminDashboard from "@/pages/AdminDashboard";
+import LeadsWorkspace from "@/pages/LeadsWorkspace";
 import AppShell from "@/components/AppShell";
 import OnboardingTour from "@/components/OnboardingTour";
 
@@ -51,6 +52,14 @@ function PlatformAdminOnly({ children }) {
   if (loading) return <div className="min-h-screen grid place-items-center text-slate-400">Chargement…</div>;
   if (!user) return <Navigate to="/login" replace />;
   if (!user.is_platform_admin) return <Navigate to="/app" replace />;
+  return children;
+}
+
+function SalesOnly({ children }) {
+  const { user, loading } = useAuth();
+  if (loading) return <div className="min-h-screen grid place-items-center text-slate-400">Chargement…</div>;
+  if (!user) return <Navigate to="/login" replace />;
+  if (!user.is_sales_employee && !user.is_platform_admin) return <Navigate to="/app" replace />;
   return children;
 }
 
@@ -85,6 +94,7 @@ function App() {
           <Route path="/app/blog" element={<Private><Shell><Blog /></Shell></Private>} />
           <Route path="/app/aide" element={<Private><Shell><Help /></Shell></Private>} />
           <Route path="/app/admin" element={<Private needsClub={false}><PlatformAdminOnly><Shell><AdminDashboard /></Shell></PlatformAdminOnly></Private>} />
+          <Route path="/app/leads" element={<Private needsClub={false}><SalesOnly><Shell><LeadsWorkspace /></Shell></SalesOnly></Private>} />
           <Route path="/legal/:doc" element={<LegalPage />} />
           <Route path="/c/:slug" element={<PublicClub />} />
           <Route path="/c/:slug/blog/:postSlug" element={<BlogPost />} />

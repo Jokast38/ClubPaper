@@ -3,7 +3,7 @@ import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip } from "recharts";
-import { Building2, Users, TrendingUp, Wallet, Mail, MessageSquare, CheckCircle2, RefreshCw, Trash2, Send, Gift } from "lucide-react";
+import { Building2, Users, TrendingUp, Wallet, Mail, MessageSquare, CheckCircle2, RefreshCw, Trash2, Send, Gift, MailCheck, MailX, Target } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 
@@ -13,6 +13,7 @@ export default function AdminDashboard() {
   const [notifications, setNotifications] = useState([]);
   const [tickets, setTickets] = useState([]);
   const [referrals, setReferrals] = useState([]);
+  const [campaignStats, setCampaignStats] = useState(null);
   const [tab, setTab] = useState("overview");
 
   const loadStats = async () => {
@@ -35,8 +36,12 @@ export default function AdminDashboard() {
     const { data } = await api.get("/admin/referrals");
     setReferrals(data);
   };
+  const loadCampaignStats = async () => {
+    const { data } = await api.get("/admin/leads/campaign-stats");
+    setCampaignStats(data);
+  };
 
-  useEffect(() => { loadStats(); loadClubs(); loadNotifications(); loadTickets(); loadReferrals(); }, []);
+  useEffect(() => { loadStats(); loadClubs(); loadNotifications(); loadTickets(); loadReferrals(); loadCampaignStats(); }, []);
 
   const updateSubscription = async (clubId, status) => {
     try {
@@ -85,6 +90,7 @@ export default function AdminDashboard() {
     { id: "notifications", label: "Emails / SMS" },
     { id: "support", label: `Réclamations${tickets.filter(t => t.status === "new").length ? ` (${tickets.filter(t => t.status === "new").length})` : ""}` },
     { id: "referrals", label: "Parrainage" },
+    { id: "campaigns", label: "Campagnes mails" },
   ];
 
   return (
@@ -94,7 +100,7 @@ export default function AdminDashboard() {
           <h1 className="font-display font-bold text-3xl text-slate-900">Admin plateforme</h1>
           <p className="mt-1 text-slate-600">Vue globale ClubPaper — tous clubs confondus.</p>
         </div>
-        <Button variant="outline" className="rounded-full h-11" onClick={() => { loadStats(); loadClubs(); loadNotifications(); loadTickets(); }} data-testid="admin-refresh-btn">
+        <Button variant="outline" className="rounded-full h-11" onClick={() => { loadStats(); loadClubs(); loadNotifications(); loadTickets(); loadReferrals(); loadCampaignStats(); }} data-testid="admin-refresh-btn">
           <RefreshCw size={16} className="mr-2" />Actualiser
         </Button>
       </div>
@@ -117,6 +123,7 @@ export default function AdminDashboard() {
       {tab === "notifications" && <NotificationsTab notifications={notifications} />}
       {tab === "support" && <SupportTab tickets={tickets} onResolve={resolveTicket} onReply={replyTicket} />}
       {tab === "referrals" && <ReferralsTab referrals={referrals} />}
+      {tab === "campaigns" && campaignStats && <CampaignsTab stats={campaignStats} />}
     </div>
   );
 }
@@ -447,6 +454,66 @@ function SupportTicketCard({ ticket: t, onResolve, onReply }) {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+const CAMPAIGN_FUNNEL_LABEL = { new: "Pas encore qualifiés", interested: "Intéressés", not_interested: "Pas intéressés", converted: "Convertis (clients)", unreachable: "Injoignables" };
+
+function CampaignsTab({ stats }) {
+  const total = stats.total_emails_sent + stats.total_emails_error;
+  const qualified = stats.total_leads_campaigned - (stats.funnel.new || 0);
+  return (
+    <div className="mt-6">
+      <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <KpiCard icon={MailCheck} label="Emails envoyés" value={stats.total_emails_sent} tint="emerald" />
+        <KpiCard icon={MailX} label="Échecs d'envoi" value={stats.total_emails_error} tint="amber" />
+        <KpiCard icon={Target} label="Leads qualifiés depuis" value={qualified} tint="slate" />
+        <KpiCard icon={CheckCircle2} label="Clients convertis" value={stats.funnel.converted || 0} tint="emerald" />
+      </div>
+
+      <div className="mt-4 text-xs text-slate-400 bg-slate-50 rounded-lg p-3">
+        "Qualifiés" = leads dont le statut a changé après l'envoi (suite à un appel de suivi). Il n'y a pas de suivi d'ouverture/réponse email à proprement parler (nécessiterait un tracking dédié côté emailing).
+      </div>
+
+      <div className="mt-6 paper-card p-6">
+        <h3 className="font-display font-semibold text-lg text-slate-900 mb-4">Devenir des leads contactés ({stats.total_leads_campaigned})</h3>
+        <div className="space-y-2">
+          {Object.entries(stats.funnel).map(([status, count]) => {
+            const pct = stats.total_leads_campaigned ? Math.round((count / stats.total_leads_campaigned) * 100) : 0;
+            return (
+              <div key={status}>
+                <div className="flex justify-between text-sm mb-1">
+                  <span className="text-slate-700">{CAMPAIGN_FUNNEL_LABEL[status] || status}</span>
+                  <span className="text-slate-500">{count} ({pct}%)</span>
+                </div>
+                <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
+                  <div className="h-full" style={{ width: `${pct}%`, background: status === "converted" ? "#059669" : "var(--club-primary)" }} />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="mt-6 paper-card p-6">
+        <h3 className="font-display font-semibold text-lg text-slate-900 mb-4">Clients signés grâce à la campagne</h3>
+        {stats.converted_clients.length === 0 && <p className="text-sm text-slate-500">Aucune conversion issue d'une campagne pour l'instant.</p>}
+        <div className="space-y-2">
+          {stats.converted_clients.map((c) => (
+            <div key={c.id} className="flex items-center justify-between text-sm px-3 py-2 rounded-lg bg-slate-50" data-testid={`campaign-converted-${c.id}`}>
+              <div>
+                <div className="font-medium text-slate-900">{c.name}</div>
+                <div className="text-xs text-slate-500">{c.city} {c.email && `· ${c.email}`}</div>
+              </div>
+              <div className="text-xs text-slate-400 text-right">
+                Email envoyé le {c.campaign_sent_at ? new Date(c.campaign_sent_at).toLocaleDateString("fr-FR") : "—"}<br/>
+                Converti le {c.converted_at ? new Date(c.converted_at).toLocaleDateString("fr-FR") : "—"}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }

@@ -238,6 +238,32 @@ def trial_ended_html(club_name: str) -> str:
 """
 
 
+def lead_campaign_html(lead_name: str, landing_url: str, sender_name: str = "") -> str:
+    """Outbound prospecting email sent to a club found via the leads CRM —
+    presents ClubPaper's value (time saved, fewer unpaid fees, free trial)."""
+    signature = f"<p style=\"margin-top:4px;\">{sender_name}<br/>ClubPaper</p>" if sender_name else "<p style=\"margin-top:4px;\">L'équipe ClubPaper</p>"
+    return f"""
+<div style="font-family: -apple-system, sans-serif; max-width: 580px; margin: 0 auto; padding: 24px; color: #0f172a;">
+  <h2 style="color: #ea580c; margin: 0 0 16px;">Bonjour {lead_name},</h2>
+  <p>Je me permets de vous contacter car de nombreux clubs amateurs comme le vôtre passent encore des heures chaque semaine sur Excel, WhatsApp et les relances de cotisations par téléphone.</p>
+  <p><b>ClubPaper</b> rassemble tout ça dans un seul outil simple, pensé pour des bénévoles — pas pour des informaticiens :</p>
+  <ul style="line-height:1.8; padding-left:20px;">
+    <li><b>Des heures gagnées chaque semaine</b> : fiche adhérent, cotisations et planning centralisés, fini les tableurs à jour manuellement.</li>
+    <li><b>Moins d'impayés</b> : relances automatiques par email (et SMS en option), paiement en ligne en 2 clics pour les familles.</li>
+    <li><b>Une communication fluide</b> : annonces et changements de créneaux envoyés automatiquement à tous les adhérents concernés.</li>
+    <li><b>Une image professionnelle</b> : une page publique à vos couleurs, générée automatiquement, pour attirer de nouveaux adhérents.</li>
+  </ul>
+  <p>Résultat pour un club de taille moyenne : plusieurs heures de gestion économisées chaque mois, et une trésorerie plus prévisible grâce à des cotisations mieux suivies.</p>
+  <p style="text-align: center; margin: 28px 0;">
+    <a href="{landing_url}" style="background: #ea580c; color: white; padding: 14px 28px; text-decoration: none; border-radius: 12px; font-weight: 600;">Découvrir ClubPaper — essai gratuit 30 jours</a>
+  </p>
+  <p>Sans carte bancaire, sans engagement pendant l'essai. Si ça ne convient pas à votre club, vous pouvez repartir sans frais.</p>
+  <p>Des questions ? Répondez simplement à cet email, je me ferai un plaisir d'y répondre.</p>
+  {signature}
+</div>
+"""
+
+
 def reminder_html(club_name: str, member_name: str, amount: float, pay_url: str, level: int) -> str:
     intros = {
         1: "Petit rappel amical",

@@ -59,6 +59,14 @@ async def platform_admin_user(request: Request):
     return user
 
 
+async def sales_user(request: Request):
+    """Platform admin or sales employee — both can work the leads call queue."""
+    user = await get_current_user(request, get_db())
+    if not (user.get("is_platform_admin") or user.get("is_sales_employee")):
+        raise HTTPException(403, "Réservé à l'équipe commerciale")
+    return user
+
+
 async def get_user_club(user: dict) -> dict:
     if not user.get("club_id"):
         raise HTTPException(400, "Aucun club associé à cet utilisateur")

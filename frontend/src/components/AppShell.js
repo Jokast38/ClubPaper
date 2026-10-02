@@ -1,5 +1,5 @@
 import { NavLink, useNavigate } from "react-router-dom";
-import { Home, Users, Wallet, CalendarDays, Megaphone, Settings as SettingsIcon, LogOut, UserPlus, Newspaper, HelpCircle, ShieldCheck } from "lucide-react";
+import { Home, Users, Wallet, CalendarDays, Megaphone, Settings as SettingsIcon, LogOut, UserPlus, Newspaper, HelpCircle, ShieldCheck, Phone } from "lucide-react";
 import { useAuth } from "@/lib/AuthContext";
 
 const nav = [
@@ -13,6 +13,9 @@ const nav = [
 export default function AppShell({ children }) {
   const { club, user, logout } = useAuth();
   const navigate = useNavigate();
+  // A sales employee with no club of their own only needs the leads workspace,
+  // not the full club nav (which would dead-end at onboarding for them).
+  const salesOnly = (user?.is_sales_employee || user?.is_platform_admin) && !club;
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -32,7 +35,7 @@ export default function AppShell({ children }) {
           </div>
         </div>
         <nav className="flex-1 p-3 space-y-1">
-          {nav.map((it) => (
+          {!salesOnly && nav.map((it) => (
             <NavLink key={it.to} to={it.to} end={it.end} data-testid={`sidebar-nav-${it.label.toLowerCase()}`}
               className={({isActive}) => `flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition ${isActive ? "text-white shadow-sm" : "text-slate-700 hover:bg-slate-50"}`}
               style={({isActive}) => isActive ? {background: "var(--club-primary)"} : {}}>
@@ -40,26 +43,37 @@ export default function AppShell({ children }) {
               {it.label}
             </NavLink>
           ))}
-          <NavLink to="/app/prospects" data-testid="sidebar-nav-prospects"
-            className={({isActive}) => `flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition ${isActive ? "text-white shadow-sm" : "text-slate-700 hover:bg-slate-50"}`}
-            style={({isActive}) => isActive ? {background: "var(--club-primary)"} : {}}>
-            <UserPlus size={20} strokeWidth={2.5} /> Demandes
-          </NavLink>
-          <NavLink to="/app/blog" data-testid="sidebar-nav-blog"
-            className={({isActive}) => `flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition ${isActive ? "text-white shadow-sm" : "text-slate-700 hover:bg-slate-50"}`}
-            style={({isActive}) => isActive ? {background: "var(--club-primary)"} : {}}>
-            <Newspaper size={20} strokeWidth={2.5} /> Blog
-          </NavLink>
-          <NavLink to="/app/aide" data-testid="sidebar-nav-aide"
-            className={({isActive}) => `flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition ${isActive ? "text-white shadow-sm" : "text-slate-700 hover:bg-slate-50"}`}
-            style={({isActive}) => isActive ? {background: "var(--club-primary)"} : {}}>
-            <HelpCircle size={20} strokeWidth={2.5} /> Aide
-          </NavLink>
-          <NavLink to="/app/parametres" data-testid="sidebar-nav-parametres"
-            className={({isActive}) => `flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition ${isActive ? "text-white shadow-sm" : "text-slate-700 hover:bg-slate-50"}`}
-            style={({isActive}) => isActive ? {background: "var(--club-primary)"} : {}}>
-            <SettingsIcon size={20} strokeWidth={2.5} /> Paramètres
-          </NavLink>
+          {!salesOnly && (
+            <>
+              <NavLink to="/app/prospects" data-testid="sidebar-nav-prospects"
+                className={({isActive}) => `flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition ${isActive ? "text-white shadow-sm" : "text-slate-700 hover:bg-slate-50"}`}
+                style={({isActive}) => isActive ? {background: "var(--club-primary)"} : {}}>
+                <UserPlus size={20} strokeWidth={2.5} /> Demandes
+              </NavLink>
+              <NavLink to="/app/blog" data-testid="sidebar-nav-blog"
+                className={({isActive}) => `flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition ${isActive ? "text-white shadow-sm" : "text-slate-700 hover:bg-slate-50"}`}
+                style={({isActive}) => isActive ? {background: "var(--club-primary)"} : {}}>
+                <Newspaper size={20} strokeWidth={2.5} /> Blog
+              </NavLink>
+              <NavLink to="/app/aide" data-testid="sidebar-nav-aide"
+                className={({isActive}) => `flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition ${isActive ? "text-white shadow-sm" : "text-slate-700 hover:bg-slate-50"}`}
+                style={({isActive}) => isActive ? {background: "var(--club-primary)"} : {}}>
+                <HelpCircle size={20} strokeWidth={2.5} /> Aide
+              </NavLink>
+              <NavLink to="/app/parametres" data-testid="sidebar-nav-parametres"
+                className={({isActive}) => `flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition ${isActive ? "text-white shadow-sm" : "text-slate-700 hover:bg-slate-50"}`}
+                style={({isActive}) => isActive ? {background: "var(--club-primary)"} : {}}>
+                <SettingsIcon size={20} strokeWidth={2.5} /> Paramètres
+              </NavLink>
+            </>
+          )}
+          {(user?.is_sales_employee || user?.is_platform_admin) && (
+            <NavLink to="/app/leads" data-testid="sidebar-nav-leads"
+              className={({isActive}) => `flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition ${isActive ? "text-white shadow-sm" : "text-slate-700 hover:bg-slate-50"}`}
+              style={({isActive}) => isActive ? {background: "#0F172A"} : {}}>
+              <Phone size={20} strokeWidth={2.5} /> Leads (Commercial)
+            </NavLink>
+          )}
           {user?.is_platform_admin && (
             <NavLink to="/app/admin" data-testid="sidebar-nav-admin"
               className={({isActive}) => `flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition ${isActive ? "text-white shadow-sm" : "text-slate-700 hover:bg-slate-50"}`}
@@ -97,7 +111,7 @@ export default function AppShell({ children }) {
       </main>
 
       {/* Mobile bottom tabs */}
-      <nav className="lg:hidden fixed bottom-0 inset-x-0 z-30 bg-white/95 backdrop-blur border-t border-slate-200" style={{paddingBottom: "env(safe-area-inset-bottom, 0px)"}}>
+      {!salesOnly && <nav className="lg:hidden fixed bottom-0 inset-x-0 z-30 bg-white/95 backdrop-blur border-t border-slate-200" style={{paddingBottom: "env(safe-area-inset-bottom, 0px)"}}>
         <ul className="grid grid-cols-5">
           {nav.map((it) => (
             <li key={it.to}>
@@ -110,7 +124,7 @@ export default function AppShell({ children }) {
             </li>
           ))}
         </ul>
-      </nav>
+      </nav>}
     </div>
   );
 }

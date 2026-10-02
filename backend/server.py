@@ -129,6 +129,8 @@ async def startup():
     await db.sessions.create_index([("club_id", 1), ("start_at", 1)])
     await db.documents.create_index([("club_id", 1), ("member_id", 1)])
     await db.blog_posts.create_index([("club_id", 1), ("slug", 1)], unique=True)
+    await db.leads.create_index("external_id", sparse=True)
+    await db.leads.create_index("status")
 
     await _seed_admin(db)
     await _backfill_referral_codes(db)
