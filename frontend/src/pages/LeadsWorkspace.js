@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Phone, Search, Upload, Mail, Send, ChevronLeft, ChevronRight, UserCircle2, Users as UsersIcon } from "lucide-react";
+import { Phone, Search, Upload, Mail, Send, ChevronLeft, ChevronRight, UserCircle2, Users as UsersIcon, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 
 const STATUS_LABEL = { new: "À appeler", interested: "Intéressé", not_interested: "Pas intéressé", converted: "Converti", unreachable: "Injoignable" };
@@ -83,6 +83,20 @@ export default function LeadsWorkspace() {
     } catch { toast.error("Impossible d'envoyer la campagne"); }
   };
 
+  const [enriching, setEnriching] = useState(false);
+  const enrichSelected = async () => {
+    if (selected.size === 0) return;
+    setEnriching(true);
+    try {
+      const { data } = await api.post("/admin/leads/enrich", { lead_ids: Array.from(selected) });
+      toast.success(`${data.enriched} lead(s) enrichi(s), ${data.unchanged} sans résultat Google`);
+      setSelected(new Set());
+      load();
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Impossible d'enrichir ces leads");
+    } finally { setEnriching(false); }
+  };
+
   const totalPages = Math.max(1, Math.ceil(leads.total / PAGE_SIZE));
   const counts = leads.counts_by_status || {};
 
@@ -132,9 +146,14 @@ export default function LeadsWorkspace() {
               <input type="checkbox" checked={assignedToMe} onChange={(e) => setAssignedToMe(e.target.checked)} />Mes leads
             </label>
             {selected.size > 0 && user?.is_platform_admin && (
-              <Button size="sm" className="rounded-full ml-auto" style={{background:"var(--club-primary)"}} onClick={sendCampaign} data-testid="leads-send-campaign-btn">
-                <Send size={14} className="mr-1.5" />Envoyer campagne ({selected.size})
-              </Button>
+              <div className="flex gap-2 ml-auto">
+                <Button size="sm" variant="outline" className="rounded-full" onClick={enrichSelected} disabled={enriching} data-testid="leads-enrich-btn">
+                  <Sparkles size={14} className="mr-1.5" />{enriching ? "Enrichissement…" : `Enrichir (${selected.size})`}
+                </Button>
+                <Button size="sm" className="rounded-full" style={{background:"var(--club-primary)"}} onClick={sendCampaign} data-testid="leads-send-campaign-btn">
+                  <Send size={14} className="mr-1.5" />Envoyer campagne ({selected.size})
+                </Button>
+              </div>
             )}
           </div>
 

@@ -4,9 +4,11 @@ Everything here is gated by `platform_admin_user` (User.is_platform_admin), whic
 distinct from a club's own "admin" (bureau) role — a club admin has no access to this router.
 """
 import io
+import os
 import csv
 import logging
 import asyncio
+import requests
 from datetime import datetime, timezone, timedelta
 from fastapi import APIRouter, HTTPException, Depends, Query, UploadFile, File
 
@@ -476,6 +478,74 @@ async def delete_lead(lead_id: str, user: dict = Depends(platform_admin_user)):
     db = get_db()
     await db.leads.delete_one({"id": lead_id})
     return {"ok": True}
+
+
+def _places_lookup(name: str, city: str, api_key: str) -> dict:
+    """Find a club on Google Places by name+city and return its phone/website,
+    if any. Best-effort, synchronous (run via asyncio.to_thread by the caller)."""
+    query = f"{name} {city}".strip()
+    find_resp = requests.get(
+        "https://maps.googleapis.com/maps/api/place/findplacefromtext/json",
+        params={"input": query, "inputtype": "textquery", "fields": "place_id", "key": api_key},
+        timeout=10,
+    ).json()
+    candidates = find_resp.get("candidates") or []
+    if find_resp.get("status") != "OK" or not candidates:
+        return {}
+    place_id = candidates[0]["place_id"]
+    details_resp = requests.get(
+        "https://maps.googleapis.com/maps/api/place/details/json",
+        params={"place_id": place_id, "fields": "formatted_phone_number,international_phone_number,website", "key": api_key},
+        timeout=10,
+    ).json()
+    if details_resp.get("status") != "OK":
+        return {}
+    result = details_resp.get("result") or {}
+    return {
+        "phone": result.get("formatted_phone_number") or result.get("international_phone_number") or "",
+        "website": result.get("website") or "",
+    }
+
+
+@router.post("/leads/enrich")
+async def enrich_leads(payload: dict, user: dict = Depends(platform_admin_user)):
+    """Fill in missing phone/website for a batch of leads via Google Places
+    (the RNA source has neither — see leads/extract_clubs_sportifs_rna.py).
+    Best-effort: a lead left empty just means Google has no matching listing.
+    """
+    api_key = os.environ.get("GOOGLE_PLACES_API_KEY", "")
+    if not api_key:
+        raise HTTPException(500, "GOOGLE_PLACES_API_KEY n'est pas configurée côté serveur.")
+
+    lead_ids = payload.get("lead_ids") or []
+    if not lead_ids:
+        raise HTTPException(400, "Aucun lead sélectionné")
+    if len(lead_ids) > 200:
+        raise HTTPException(400, "Limite de 200 leads par enrichissement (l'API Google est facturée à l'appel).")
+
+    db = get_db()
+    leads = await db.leads.find({"id": {"$in": lead_ids}}, {"_id": 0}).to_list(len(lead_ids))
+    enriched, unchanged, errors = 0, 0, 0
+    for lead in leads:
+        try:
+            found = await asyncio.to_thread(_places_lookup, lead["name"], lead.get("city", ""), api_key)
+            update = {}
+            if found.get("phone") and not lead.get("phone"):
+                update["phone"] = found["phone"]
+            if found.get("website") and not lead.get("website"):
+                update["website"] = found["website"]
+            if update:
+                update["updated_at"] = datetime.now(timezone.utc).isoformat()
+                await db.leads.update_one({"id": lead["id"]}, {"$set": update})
+                enriched += 1
+            else:
+                unchanged += 1
+        except Exception as e:
+            logger.warning("lead enrichment failed for %s: %s", lead.get("id"), e)
+            errors += 1
+        await asyncio.sleep(0.05)  # stay comfortably under Google's QPS limits
+
+    return {"enriched": enriched, "unchanged": unchanged, "errors": errors}
 
 
 @router.post("/leads/campaign")
