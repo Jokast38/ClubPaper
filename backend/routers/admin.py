@@ -480,6 +480,16 @@ async def delete_lead(lead_id: str, user: dict = Depends(platform_admin_user)):
     return {"ok": True}
 
 
+@router.post("/leads/bulk-delete")
+async def bulk_delete_leads(payload: dict, user: dict = Depends(platform_admin_user)):
+    lead_ids = payload.get("lead_ids") or []
+    if not lead_ids:
+        raise HTTPException(400, "Aucun lead sélectionné")
+    db = get_db()
+    result = await db.leads.delete_many({"id": {"$in": lead_ids}})
+    return {"deleted": result.deleted_count}
+
+
 def _places_lookup(name: str, city: str, api_key: str) -> dict:
     """Find a club on Google Places by name+city and return its phone/website,
     if any. Best-effort, synchronous (run via asyncio.to_thread by the caller)."""

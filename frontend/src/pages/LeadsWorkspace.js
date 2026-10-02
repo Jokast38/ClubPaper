@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Phone, Search, Upload, Mail, Send, ChevronLeft, ChevronRight, UserCircle2, Users as UsersIcon, Sparkles } from "lucide-react";
+import { Phone, Search, Upload, Mail, Send, ChevronLeft, ChevronRight, UserCircle2, Users as UsersIcon, Sparkles, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 const STATUS_LABEL = { new: "À appeler", interested: "Intéressé", not_interested: "Pas intéressé", converted: "Converti", unreachable: "Injoignable" };
@@ -97,6 +97,27 @@ export default function LeadsWorkspace() {
     } finally { setEnriching(false); }
   };
 
+  const deleteLead = async (id) => {
+    if (!window.confirm("Supprimer ce lead ?")) return;
+    try {
+      await api.delete(`/admin/leads/${id}`);
+      toast.success("Lead supprimé");
+      setSelected((prev) => { const n = new Set(prev); n.delete(id); return n; });
+      load();
+    } catch { toast.error("Impossible de supprimer"); }
+  };
+
+  const deleteSelected = async () => {
+    if (selected.size === 0) return;
+    if (!window.confirm(`Supprimer définitivement ${selected.size} lead(s) ?`)) return;
+    try {
+      const { data } = await api.post("/admin/leads/bulk-delete", { lead_ids: Array.from(selected) });
+      toast.success(`${data.deleted} lead(s) supprimé(s)`);
+      setSelected(new Set());
+      load();
+    } catch { toast.error("Impossible de supprimer"); }
+  };
+
   const totalPages = Math.max(1, Math.ceil(leads.total / PAGE_SIZE));
   const counts = leads.counts_by_status || {};
 
@@ -153,12 +174,36 @@ export default function LeadsWorkspace() {
                 <Button size="sm" className="rounded-full" style={{background:"var(--club-primary)"}} onClick={sendCampaign} data-testid="leads-send-campaign-btn">
                   <Send size={14} className="mr-1.5" />Envoyer campagne ({selected.size})
                 </Button>
+                <Button size="sm" variant="outline" className="rounded-full text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700" onClick={deleteSelected} data-testid="leads-delete-selected-btn">
+                  <Trash2 size={14} className="mr-1.5" />Supprimer ({selected.size})
+                </Button>
               </div>
             )}
           </div>
 
+          {/* Select all (current page) */}
+          {user?.is_platform_admin && leads.items.length > 0 && (
+            <label className="mt-4 flex items-center gap-2 text-sm text-slate-600 px-1">
+              <input
+                type="checkbox"
+                className="w-4 h-4"
+                checked={leads.items.every((l) => selected.has(l.id))}
+                onChange={() => {
+                  setSelected((prev) => {
+                    const allSelected = leads.items.every((l) => prev.has(l.id));
+                    const next = new Set(prev);
+                    leads.items.forEach((l) => (allSelected ? next.delete(l.id) : next.add(l.id)));
+                    return next;
+                  });
+                }}
+                data-testid="leads-select-all"
+              />
+              Tout sélectionner sur cette page ({leads.items.length})
+            </label>
+          )}
+
           {/* List */}
-          <div className="mt-4 space-y-2">
+          <div className="mt-2 space-y-2">
             {leads.items.length === 0 && (
               <div className="paper-card p-10 text-center">
                 <UsersIcon size={28} className="mx-auto text-slate-300" />
@@ -193,6 +238,16 @@ export default function LeadsWorkspace() {
                 </div>
                 {lead.assigned_to_name && <span className="text-xs text-slate-400 shrink-0 hidden sm:block">{lead.assigned_to_name}</span>}
                 <span className={`pill-tag shrink-0 ${STATUS_CLASS[lead.status] || "status-pending"}`}>{STATUS_LABEL[lead.status] || lead.status}</span>
+                {user?.is_platform_admin && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); deleteLead(lead.id); }}
+                    className="shrink-0 text-slate-400 hover:text-red-600 p-1"
+                    title="Supprimer ce lead"
+                    data-testid={`lead-delete-${lead.id}`}
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                )}
               </div>
             ))}
           </div>
