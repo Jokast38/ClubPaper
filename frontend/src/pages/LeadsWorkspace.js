@@ -7,11 +7,27 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Phone, Search, Upload, Mail, Send, ChevronLeft, ChevronRight, UserCircle2, Users as UsersIcon, Sparkles, Trash2 } from "lucide-react";
+import { Phone, Search, Upload, Mail, Send, ChevronLeft, ChevronRight, UserCircle2, Users as UsersIcon, Sparkles, Trash2, Flame, ShieldOff } from "lucide-react";
 import { toast } from "sonner";
 
-const STATUS_LABEL = { new: "À appeler", interested: "Intéressé", not_interested: "Pas intéressé", converted: "Converti", unreachable: "Injoignable" };
-const STATUS_CLASS = { new: "status-pending", interested: "status-paid", not_interested: "status-overdue", converted: "status-paid", unreachable: "status-overdue" };
+const STATUS_LABEL = {
+  nouveau: "Nouveau", a_appeler: "À appeler", contacte: "Contacté", interesse: "Intéressé",
+  rdv_planifie: "RDV planifié", essai_demarre: "Essai démarré", club_actif: "Club actif",
+  client_payant: "Client payant", refus: "Refus", injoignable: "Injoignable",
+};
+const STATUS_CLASS = {
+  nouveau: "status-pending", a_appeler: "status-pending", contacte: "status-pending", interesse: "status-paid",
+  rdv_planifie: "status-paid", essai_demarre: "status-paid", club_actif: "status-paid",
+  client_payant: "status-paid", refus: "status-overdue", injoignable: "status-overdue",
+};
+const REJECTION_REASON_LABEL = {
+  trop_cher: "Trop cher", deja_equipe: "Déjà équipé", pas_le_temps: "Pas le temps",
+  decision_bureau: "Décision du bureau", pas_interesse: "Pas intéressé", autre: "Autre",
+};
+const CURRENT_TOOL_LABEL = { excel: "Excel", whatsapp: "WhatsApp", helloasso: "HelloAsso", assoconnect: "AssoConnect", footclubs: "Footclubs", autre: "Autre" };
+const DECISION_MAKER_LABEL = { president: "Président(e)", tresorier: "Trésorier(ère)", secretaire: "Secrétaire", autre: "Autre" };
+const INTEREST_LABEL = { froid: "Froid", tiede: "Tiède", chaud: "Chaud" };
+const HORIZON_LABEL = { maintenant: "Maintenant", avant_saison: "Avant la nouvelle saison", plus_tard: "Plus tard" };
 const PAGE_SIZE = 30;
 
 export default function LeadsWorkspace() {
@@ -145,8 +161,8 @@ export default function LeadsWorkspace() {
       {tab === "queue" && (
         <>
           {/* Status counters */}
-          <div className="mt-6 grid grid-cols-2 sm:grid-cols-5 gap-3">
-            {["new", "interested", "not_interested", "converted", "unreachable"].map((s) => (
+          <div className="mt-6 grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-5 gap-3">
+            {["nouveau", "a_appeler", "contacte", "interesse", "rdv_planifie"].map((s) => (
               <button key={s} onClick={() => setStatus(status === s ? "" : s)} className={`paper-card p-3 text-left transition ${status === s ? "ring-2 ring-offset-1" : ""}`} style={status === s ? {"--tw-ring-color": "var(--club-primary)"} : {}} data-testid={`leads-count-${s}`}>
                 <div className="text-xs text-slate-500">{STATUS_LABEL[s]}</div>
                 <div className="font-display font-bold text-xl text-slate-900">{counts[s] ?? 0}</div>
@@ -160,6 +176,13 @@ export default function LeadsWorkspace() {
               <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
               <Input placeholder="Rechercher un club, une ville…" className="pl-9 h-10" value={q} onChange={(e) => setQ(e.target.value)} data-testid="leads-search" />
             </div>
+            <Select value={status || "all"} onValueChange={(v) => setStatus(v === "all" ? "" : v)}>
+              <SelectTrigger className="h-10 w-[170px]" data-testid="leads-status-filter"><SelectValue placeholder="Tous statuts" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Tous statuts</SelectItem>
+                {Object.entries(STATUS_LABEL).map(([v, l]) => <SelectItem key={v} value={v}>{l}</SelectItem>)}
+              </SelectContent>
+            </Select>
             <label className="flex items-center gap-2 text-sm text-slate-600">
               <input type="checkbox" checked={hasPhone} onChange={(e) => setHasPhone(e.target.checked)} />Avec téléphone
             </label>
@@ -228,8 +251,16 @@ export default function LeadsWorkspace() {
                     data-testid={`lead-select-${lead.id}`}
                   />
                 )}
+                {lead.priority_score > 0 && (
+                  <span className="shrink-0 flex items-center gap-1 text-xs font-semibold text-orange-600" title="Score de priorité">
+                    <Flame size={14} />{lead.priority_score}
+                  </span>
+                )}
                 <div className="min-w-0 flex-1">
-                  <div className="font-medium text-slate-900 truncate">{lead.name}</div>
+                  <div className="font-medium text-slate-900 truncate flex items-center gap-2">
+                    {lead.name}
+                    {lead.do_not_call && <ShieldOff size={14} className="text-slate-400" title="Ne plus rappeler" />}
+                  </div>
                   <div className="text-sm text-slate-500 truncate flex items-center gap-3 flex-wrap">
                     {lead.city && <span>{lead.city}</span>}
                     {lead.phone && <span className="flex items-center gap-1"><Phone size={12} />{lead.phone}</span>}
@@ -345,12 +376,18 @@ function LeadDetailDialog({ lead, onOpenChange, onSaved }) {
   useEffect(() => { setForm(lead || {}); }, [lead]);
 
   const save = async (extra = {}) => {
+    const next = { ...form, ...extra };
+    if (next.status === "refus" && !next.rejection_reason) {
+      toast.error("Un motif de refus est obligatoire pour ce statut");
+      return;
+    }
     setSaving(true);
     try {
-      await api.put(`/admin/leads/${lead.id}`, { ...form, ...extra });
+      const { data } = await api.put(`/admin/leads/${lead.id}`, next);
       toast.success("Lead mis à jour");
+      setForm(data);
       onSaved();
-    } catch { toast.error("Impossible d'enregistrer"); }
+    } catch (err) { toast.error(err.response?.data?.detail?.message || err.response?.data?.detail || "Impossible d'enregistrer"); }
     finally { setSaving(false); }
   };
 
@@ -358,30 +395,93 @@ function LeadDetailDialog({ lead, onOpenChange, onSaved }) {
 
   return (
     <Dialog open={!!lead} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg" data-testid="lead-detail-dialog">
-        <DialogHeader><DialogTitle>{lead.name}</DialogTitle></DialogHeader>
+      <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto" data-testid="lead-detail-dialog">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            {lead.name}
+            {form.priority_score > 0 && <span className="pill-tag status-paid flex items-center gap-1"><Flame size={12} />{form.priority_score}</span>}
+          </DialogTitle>
+        </DialogHeader>
         {lead.description && <p className="text-sm text-slate-500 bg-slate-50 rounded-lg p-3 max-h-24 overflow-y-auto">{lead.description}</p>}
         <div className="grid grid-cols-2 gap-3">
           <div><Label>Téléphone</Label><Input value={form.phone || ""} onChange={(e) => setForm({ ...form, phone: e.target.value })} className="mt-1 h-11" data-testid="lead-phone" /></div>
           <div><Label>Email</Label><Input value={form.email || ""} onChange={(e) => setForm({ ...form, email: e.target.value })} className="mt-1 h-11" data-testid="lead-email" /></div>
         </div>
         <div>
-          <Label>Qualification</Label>
-          <Select value={form.status || "new"} onValueChange={(v) => setForm({ ...form, status: v })}>
+          <Label>Statut</Label>
+          <Select value={form.status || "nouveau"} onValueChange={(v) => setForm({ ...form, status: v })}>
             <SelectTrigger className="mt-1 h-11" data-testid="lead-status"><SelectValue /></SelectTrigger>
             <SelectContent>
               {Object.entries(STATUS_LABEL).map(([v, l]) => <SelectItem key={v} value={v}>{l}</SelectItem>)}
             </SelectContent>
           </Select>
         </div>
+        {form.status === "refus" && (
+          <div>
+            <Label>Motif de refus <span className="text-red-500">*</span></Label>
+            <Select value={form.rejection_reason || ""} onValueChange={(v) => setForm({ ...form, rejection_reason: v })}>
+              <SelectTrigger className="mt-1 h-11" data-testid="lead-rejection-reason"><SelectValue placeholder="Choisir un motif" /></SelectTrigger>
+              <SelectContent>
+                {Object.entries(REJECTION_REASON_LABEL).map(([v, l]) => <SelectItem key={v} value={v}>{l}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            {form.rejection_reason === "autre" && (
+              <Input className="mt-2 h-11" placeholder="Précisez…" value={form.rejection_note || ""} onChange={(e) => setForm({ ...form, rejection_note: e.target.value })} data-testid="lead-rejection-note" />
+            )}
+          </div>
+        )}
+
+        <div className="border-t border-slate-100 pt-3">
+          <Label className="text-xs uppercase text-slate-400">Critères de qualification</Label>
+          <div className="mt-2 grid grid-cols-2 gap-3">
+            <div><Label className="text-xs">Sport</Label><Input value={form.sport || ""} onChange={(e) => setForm({ ...form, sport: e.target.value })} className="mt-1 h-10" data-testid="lead-sport" /></div>
+            <div><Label className="text-xs">Nb adhérents (approx.)</Label><Input type="number" value={form.estimated_member_count ?? ""} onChange={(e) => setForm({ ...form, estimated_member_count: e.target.value ? Number(e.target.value) : null })} className="mt-1 h-10" data-testid="lead-member-count" /></div>
+            <div><Label className="text-xs">Nb équipes (approx.)</Label><Input type="number" value={form.estimated_team_count ?? ""} onChange={(e) => setForm({ ...form, estimated_team_count: e.target.value ? Number(e.target.value) : null })} className="mt-1 h-10" data-testid="lead-team-count" /></div>
+            <div>
+              <Label className="text-xs">Outil actuel</Label>
+              <Select value={form.current_tool || ""} onValueChange={(v) => setForm({ ...form, current_tool: v })}>
+                <SelectTrigger className="mt-1 h-10" data-testid="lead-current-tool"><SelectValue placeholder="—" /></SelectTrigger>
+                <SelectContent>{Object.entries(CURRENT_TOOL_LABEL).map(([v, l]) => <SelectItem key={v} value={v}>{l}</SelectItem>)}</SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label className="text-xs">Qui décide</Label>
+              <Select value={form.decision_maker_role || ""} onValueChange={(v) => setForm({ ...form, decision_maker_role: v })}>
+                <SelectTrigger className="mt-1 h-10" data-testid="lead-decision-maker"><SelectValue placeholder="—" /></SelectTrigger>
+                <SelectContent>{Object.entries(DECISION_MAKER_LABEL).map(([v, l]) => <SelectItem key={v} value={v}>{l}</SelectItem>)}</SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label className="text-xs">Niveau d'intérêt</Label>
+              <Select value={form.interest_level || ""} onValueChange={(v) => setForm({ ...form, interest_level: v })}>
+                <SelectTrigger className="mt-1 h-10" data-testid="lead-interest-level"><SelectValue placeholder="—" /></SelectTrigger>
+                <SelectContent>{Object.entries(INTEREST_LABEL).map(([v, l]) => <SelectItem key={v} value={v}>{l}</SelectItem>)}</SelectContent>
+              </Select>
+            </div>
+            <div className="col-span-2">
+              <Label className="text-xs">Échéance d'achat</Label>
+              <Select value={form.buying_horizon || ""} onValueChange={(v) => setForm({ ...form, buying_horizon: v })}>
+                <SelectTrigger className="mt-1 h-10" data-testid="lead-buying-horizon"><SelectValue placeholder="—" /></SelectTrigger>
+                <SelectContent>{Object.entries(HORIZON_LABEL).map(([v, l]) => <SelectItem key={v} value={v}>{l}</SelectItem>)}</SelectContent>
+              </Select>
+            </div>
+          </div>
+        </div>
+
         <div>
           <Label>Notes d'appel</Label>
           <Textarea rows={4} value={form.notes || ""} onChange={(e) => setForm({ ...form, notes: e.target.value })} className="mt-1" placeholder="Ce qui a été dit, à rappeler, objections…" data-testid="lead-notes" />
         </div>
         {lead.website && <a href={lead.website.startsWith("http") ? lead.website : `https://${lead.website}`} target="_blank" rel="noreferrer" className="text-sm text-orange-600 underline">Voir le site web</a>}
+
+        <label className="flex items-center gap-2 text-sm text-slate-600 border-t border-slate-100 pt-3">
+          <input type="checkbox" checked={!!form.do_not_call} onChange={(e) => setForm({ ...form, do_not_call: e.target.checked })} data-testid="lead-do-not-call" />
+          <ShieldOff size={14} />Ne plus jamais rappeler (retire ce lead des files d'appel et campagnes)
+        </label>
+
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)} className="rounded-full">Fermer</Button>
-          <Button onClick={() => save()} disabled={saving} className="rounded-full" style={{background:"var(--club-primary)"}} data-testid="lead-save-btn">
+          <Button onClick={() => save()} disabled={saving || (form.status === "refus" && !form.rejection_reason)} className="rounded-full" style={{background:"var(--club-primary)"}} data-testid="lead-save-btn">
             {saving ? "Enregistrement…" : "Enregistrer"}
           </Button>
         </DialogFooter>

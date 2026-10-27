@@ -18,6 +18,7 @@ from setup_stripe import setup_catalog
 from storage import init_storage
 from scheduler_jobs import create_scheduler
 from models import User
+from models import LEAD_STATUS_MIGRATION
 from auth_utils import hash_password
 from deps import serialize
 
@@ -121,6 +122,44 @@ async def _backfill_referral_codes(db):
     await db.clubs.update_many({"plan": {"$exists": False}}, {"$set": {"plan": "trial"}})
 
 
+async def _backfill_lead_pipeline(db):
+    """One-time migration: leads created before the extended qualification
+    pipeline (Partie A) need their status remapped to the new vocabulary and
+    the new fields defaulted, so old documents keep working untouched."""
+    for old_status, new_status in LEAD_STATUS_MIGRATION.items():
+        await db.leads.update_many({"status": old_status}, {"$set": {"status": new_status}})
+    await db.leads.update_many(
+        {"priority_score": {"$exists": False}},
+        {"$set": {
+            "priority_score": 0, "do_not_call": False, "claim_status": "none",
+            "annuaire_visible": False, "contact_source": "", "rejection_reason": "", "rejection_note": "",
+            "name_city_key": "", "phone_key": "", "probable_duplicate_of": [],
+        }},
+    )
+    from lead_dedupe import dedupe_key, normalize_phone
+    from pymongo import UpdateOne
+    # Fully materialize the batch before writing — updating the same field the
+    # cursor is actively scanning on (name_city_key: "") would otherwise make
+    # documents shift in and out of the index range mid-scan.
+    to_backfill = await db.leads.find(
+        {"name_city_key": ""}, {"_id": 0, "id": 1, "name": 1, "city": 1, "phone": 1},
+    ).to_list(length=None)
+    for i in range(0, len(to_backfill), 1000):
+        batch = to_backfill[i:i + 1000]
+        ops = [
+            UpdateOne(
+                {"id": lead["id"]},
+                {"$set": {
+                    "name_city_key": dedupe_key(lead.get("name", ""), lead.get("city", "")),
+                    "phone_key": normalize_phone(lead.get("phone", "")),
+                }},
+            )
+            for lead in batch
+        ]
+        if ops:
+            await db.leads.bulk_write(ops, ordered=False)
+
+
 @app.on_event("startup")
 async def startup():
     db = get_db()
@@ -133,9 +172,40 @@ async def startup():
     await db.blog_posts.create_index([("club_id", 1), ("slug", 1)], unique=True)
     await db.leads.create_index("external_id", sparse=True)
     await db.leads.create_index("status")
+    await db.leads.create_index("assigned_to_user_id")
+    await db.leads.create_index("do_not_call")
+    await db.leads.create_index([("annuaire_visible", 1), ("sport", 1), ("city", 1)])
+    await db.leads.create_index("annuaire_slug", unique=True, sparse=True)
+    await db.leads.create_index("name_city_key")
+    await db.leads.create_index("phone_key", sparse=True)
+    await db.lead_activities.create_index([("lead_id", 1), ("created_at", -1)])
+    await db.appointments.create_index([("lead_id", 1)])
+    await db.appointments.create_index([("assigned_to_user_id", 1), ("start_at", 1)])
+    # DB-level double-booking guard: exact same employee + exact same start time
+    # cannot coexist while both are "active" bookings (cancelled ones don't block a slot).
+    await db.appointments.create_index(
+        [("assigned_to_user_id", 1), ("start_at", 1)],
+        unique=True, partialFilterExpression={"status": {"$in": ["planifie", "confirme", "realise"]}},
+        name="no_double_booking",
+    )
+    await db.employee_availability.create_index("user_id", unique=True)
+    await db.claim_requests.create_index("lead_id")
+    await db.claim_requests.create_index("email")
+    await db.claim_requests.create_index("created_at")
 
     await _seed_admin(db)
     await _backfill_referral_codes(db)
+
+    async def _run_lead_backfill():
+        try:
+            await asyncio.wait_for(_backfill_lead_pipeline(db), timeout=300)
+            logger.info("Lead pipeline backfill complete.")
+        except Exception as e:
+            logger.warning("Lead pipeline backfill skipped/incomplete (will retry on next restart): %s", e)
+    # Fire-and-forget: a slow/degraded DB connection must never delay the app
+    # from accepting traffic. Safe to run alongside live requests — it only
+    # touches legacy documents that are missing the new fields/keys.
+    asyncio.create_task(_run_lead_backfill())
 
     try:
         await asyncio.to_thread(setup_catalog)

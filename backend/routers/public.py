@@ -93,6 +93,28 @@ async def public_fee(fee_id: str):
     }
 
 
+@router.get("/leads/{lead_id}/desinscription")
+async def unsubscribe_lead(lead_id: str):
+    """One-click unsubscribe link from a prospecting email (Partie F) — sets
+    do_not_call so this lead is dropped from every future call queue and
+    campaign. No auth: the lead_id itself (a UUID4) is the token, same
+    pattern as the public fee-payment links."""
+    db = get_db()
+    from datetime import datetime, timezone
+    result = await db.leads.update_one(
+        {"id": lead_id},
+        {"$set": {"do_not_call": True, "do_not_call_at": datetime.now(timezone.utc).isoformat(), "do_not_call_source": "unsubscribe_link"}},
+    )
+    if result.matched_count == 0:
+        raise HTTPException(404, "Lien invalide")
+    return FastAPIResponse(
+        content="<html><body style=\"font-family:sans-serif;text-align:center;padding:60px;\">"
+                "<h2>Vous ne serez plus recontacté(e)</h2><p>Votre demande a bien été prise en compte.</p>"
+                "</body></html>",
+        media_type="text/html",
+    )
+
+
 @router.get("/media")
 async def public_media(path: str = Query(...)):
     if not path.startswith("clubmanager/clubs/") or "/media/" not in path:

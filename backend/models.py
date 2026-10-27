@@ -353,7 +353,31 @@ class UpgradePrompt(BaseModel):
 
 
 # ---------- Sales leads (prospecting CSV import + call tracking) ----------
-LEAD_STATUSES = ["new", "interested", "not_interested", "converted", "unreachable"]
+# Pipeline (Partie A): "refus" and "injoignable" are exit statuses — a lead can
+# be moved to either from anywhere in the pipeline.
+LEAD_STATUSES = [
+    "nouveau", "a_appeler", "contacte", "interesse", "rdv_planifie",
+    "essai_demarre", "club_actif", "client_payant",
+    "refus", "injoignable",
+]
+LEAD_EXIT_STATUSES = ["refus", "injoignable"]
+
+# One-time migration map for leads created before this pipeline existed —
+# consumed by server.py's startup backfill, never read at request time.
+LEAD_STATUS_MIGRATION = {
+    "new": "nouveau",
+    "interested": "interesse",
+    "not_interested": "refus",
+    "converted": "client_payant",
+    "unreachable": "injoignable",
+}
+
+REJECTION_REASONS = ["trop_cher", "deja_equipe", "pas_le_temps", "decision_bureau", "pas_interesse", "autre"]
+
+CURRENT_TOOLS = ["excel", "whatsapp", "helloasso", "assoconnect", "footclubs", "autre"]
+DECISION_MAKER_ROLES = ["president", "tresorier", "secretaire", "autre"]
+INTEREST_LEVELS = ["froid", "tiede", "chaud"]
+BUYING_HORIZONS = ["maintenant", "avant_saison", "plus_tard"]
 
 
 class LeadCreate(BaseModel):
@@ -365,21 +389,164 @@ class LeadCreate(BaseModel):
     city: Optional[str] = ""
     website: Optional[str] = ""
     description: Optional[str] = ""  # the RNA "objet" free-text field, useful context for the caller
-    source: str = "import"
+    source: str = "import"  # import, rna_import, csv_import, annuaire, manuel
     external_id: Optional[str] = ""  # e.g. id_rna, used to de-duplicate re-imports
 
 
 class Lead(LeadCreate):
     model_config = ConfigDict(extra="ignore")
     id: str = Field(default_factory=_uid)
-    status: str = "new"  # new, interested, not_interested, converted, unreachable
-    notes: str = ""
+    status: str = "nouveau"
+    notes: str = ""  # legacy free-text field, superseded by LeadActivity notes — kept for old records
     assigned_to_user_id: Optional[str] = None
     assigned_to_name: str = ""
     campaign_sent_at: Optional[datetime] = None
     last_contacted_at: Optional[datetime] = None
+    contact_source: str = ""  # where the phone/email came from: rna, google_places, site_web, revendication...
+
+    # ---- Anti-doublon (indexed, computed server-side from name/city/phone on every write) ----
+    name_city_key: str = ""
+    phone_key: str = ""
+    probable_duplicate_of: List[str] = Field(default_factory=list)
+
+    # ---- Qualification criteria (Partie A) — all optional ----
+    sport: Optional[str] = ""
+    estimated_member_count: Optional[int] = None
+    estimated_team_count: Optional[int] = None
+    current_tool: Optional[str] = ""  # one of CURRENT_TOOLS, free text accepted too
+    decision_maker_role: Optional[str] = ""  # one of DECISION_MAKER_ROLES
+    interest_level: Optional[str] = ""  # one of INTEREST_LEVELS
+    buying_horizon: Optional[str] = ""  # one of BUYING_HORIZONS
+    priority_score: int = 0  # recomputed server-side whenever qualification fields change — see lead_scoring.py
+
+    # ---- Rejection ----
+    rejection_reason: Optional[str] = ""  # one of REJECTION_REASONS, required when status -> refus
+    rejection_note: Optional[str] = ""  # free text for "autre"
+
+    # ---- Compliance (Partie F) ----
+    do_not_call: bool = False
+    do_not_call_at: Optional[datetime] = None
+    do_not_call_source: str = ""  # unsubscribe_link, manual, phone_request...
+
+    # ---- Call-queue assignment & reminders (Partie B) ----
+    callback_at: Optional[datetime] = None  # next scheduled callback — surfaces the lead at the top of the queue
+
+    # ---- Directory (Partie E) — defaults keep existing leads unpublished ----
+    annuaire_visible: bool = False
+    annuaire_slug: Optional[str] = None
+    claim_status: str = "none"  # none, a_verifier, revendique
+    claimed_by_user_id: Optional[str] = None
+    claimed_club_id: Optional[str] = None
+    retrait_requested: bool = False
+
     created_at: datetime = Field(default_factory=_now)
     updated_at: datetime = Field(default_factory=_now)
+
+
+# ---------- Lead activity feed (Partie B) ----------
+LEAD_ACTIVITY_TYPES = ["note", "status_change", "call", "email", "appointment"]
+CALL_OUTCOMES = ["no_answer", "voicemail", "reached", "callback", "refus", "interesse"]
+
+
+class LeadActivityCreate(BaseModel):
+    type: str  # note, call (status_change/email/appointment are system-generated)
+    note_type: Optional[str] = "appel"  # for type=note: appel, email, visite, interne
+    text: Optional[str] = ""
+    call_outcome: Optional[str] = None  # for type=call
+    call_duration_seconds: Optional[int] = None
+    callback_at: Optional[datetime] = None  # for call_outcome=callback
+
+
+class LeadActivity(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    id: str = Field(default_factory=_uid)
+    lead_id: str
+    type: str
+    note_type: Optional[str] = None
+    text: str = ""
+    author_id: str
+    author_name: str = ""
+    # status_change payload
+    from_status: Optional[str] = None
+    to_status: Optional[str] = None
+    # call payload
+    call_outcome: Optional[str] = None
+    call_duration_seconds: Optional[int] = None
+    callback_at: Optional[datetime] = None
+    created_at: datetime = Field(default_factory=_now)
+
+
+# ---------- Appointments (Partie C) ----------
+APPOINTMENT_TYPES = ["appel_decouverte", "demo_visio", "installation_distance", "installation_sur_place"]
+APPOINTMENT_STATUSES = ["planifie", "confirme", "realise", "annule", "non_presente"]
+
+
+class AppointmentCreate(BaseModel):
+    lead_id: str
+    type: str  # one of APPOINTMENT_TYPES
+    start_at: datetime
+    duration_minutes: int = 30
+    assigned_to_user_id: str
+    location: Optional[str] = ""  # for installation_sur_place
+    video_link: Optional[str] = ""  # for demo_visio
+    note: Optional[str] = ""
+
+
+class Appointment(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    id: str = Field(default_factory=_uid)
+    lead_id: str
+    type: str
+    start_at: datetime
+    duration_minutes: int = 30
+    timezone: str = "Europe/Paris"
+    assigned_to_user_id: str
+    assigned_to_name: str = ""
+    location: str = ""
+    video_link: str = ""
+    status: str = "planifie"
+    note: str = ""
+    reminder_day_before_sent: bool = False
+    reminder_1h_sent: bool = False
+    claim_token: Optional[str] = None  # set when booked via the public claim/booking link, for audit
+    created_at: datetime = Field(default_factory=_now)
+    updated_at: datetime = Field(default_factory=_now)
+
+
+class EmployeeAvailabilitySlot(BaseModel):
+    type: str  # one of APPOINTMENT_TYPES
+    weekday: int  # 0 = Monday ... 6 = Sunday
+    start_time: str  # "HH:MM"
+    end_time: str  # "HH:MM"
+
+
+class EmployeeAvailability(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    id: str = Field(default_factory=_uid)
+    user_id: str
+    slots: List[EmployeeAvailabilitySlot] = Field(default_factory=list)
+    updated_at: datetime = Field(default_factory=_now)
+
+
+# ---------- Directory claim flow (Partie E2) ----------
+class ClaimRequestCreate(BaseModel):
+    lead_id: str
+    name: str
+    role: str  # president, tresorier, secretaire, autre
+    email: EmailStr
+    phone: Optional[str] = ""
+
+
+class ClaimRequest(ClaimRequestCreate):
+    model_config = ConfigDict(extra="ignore")
+    id: str = Field(default_factory=_uid)
+    status: str = "pending_verification"  # pending_verification, a_verifier, verified, rejected, revoked
+    verification_method: str = ""  # email_code, manual
+    verified_at: Optional[datetime] = None
+    verified_by_user_id: Optional[str] = None
+    club_id: Optional[str] = None  # set once the club is created
+    ip_address: str = ""
+    created_at: datetime = Field(default_factory=_now)
 
 
 # ---------- Personal admin mailbox (compose/send + templates) ----------

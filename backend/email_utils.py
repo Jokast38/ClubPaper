@@ -281,10 +281,11 @@ def trial_ended_html(club_name: str) -> str:
 """
 
 
-def lead_campaign_html(lead_name: str, landing_url: str, sender_name: str = "") -> str:
+def lead_campaign_html(lead_name: str, landing_url: str, sender_name: str = "", unsubscribe_url: str = "") -> str:
     """Outbound prospecting email sent to a club found via the leads CRM —
     presents ClubPaper's value (time saved, fewer unpaid fees, free trial)."""
     signature = f"<p style=\"margin-top:4px;\">{sender_name}<br/>ClubPaper</p>" if sender_name else "<p style=\"margin-top:4px;\">L'équipe ClubPaper</p>"
+    unsubscribe = f'<p style="text-align:center;font-size:12px;color:#94a3b8;margin-top:24px;">Vous ne souhaitez plus être recontacté(e) ? <a href="{unsubscribe_url}" style="color:#94a3b8;">Cliquez ici</a>.</p>' if unsubscribe_url else ""
     return f"""
 <div style="font-family: -apple-system, sans-serif; max-width: 580px; margin: 0 auto; padding: 24px; color: #0f172a;">
   <h2 style="color: #ea580c; margin: 0 0 16px;">Bonjour {lead_name},</h2>
@@ -303,6 +304,7 @@ def lead_campaign_html(lead_name: str, landing_url: str, sender_name: str = "") 
   <p>Sans carte bancaire, sans engagement pendant l'essai. Si ça ne convient pas à votre club, vous pouvez repartir sans frais.</p>
   <p>Des questions ? Répondez simplement à cet email, je me ferai un plaisir d'y répondre.</p>
   {signature}
+  {unsubscribe}
 </div>
 """
 

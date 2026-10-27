@@ -15,9 +15,14 @@ from fastapi import APIRouter, HTTPException, Depends, Query, UploadFile, File
 from database import get_db
 from deps import platform_admin_user, current_user, sales_user, serialize, delete_club_cascade, frontend_url
 from auth_utils import hash_password
-from models import SupportTicketCreate, SupportTicket, Lead, LeadCreate, EmployeeCreate, User, LEAD_STATUSES
+from models import (
+    SupportTicketCreate, SupportTicket, Lead, LeadCreate, EmployeeCreate, User,
+    LEAD_STATUSES, LEAD_EXIT_STATUSES, REJECTION_REASONS, LeadActivity,
+)
 from email_utils import send_email, support_ticket_html, support_reply_html, lead_campaign_html
 from telegram_utils import notify_admins_telegram, notify_admin_telegram
+from lead_scoring import compute_priority_score
+from lead_dedupe import dedupe_key, normalize_phone
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 logger = logging.getLogger(__name__)
@@ -416,32 +421,76 @@ async def import_leads(file: UploadFile = File(...), user: dict = Depends(platfo
     to_insert = []
     seen_in_batch = set()
     skipped_duplicates = 0
+    possible_duplicates = 0
     errors = 0
+    rows_norm = []
     for row in rows:
+        row_norm = {(k or "").strip().lower(): (v or "").strip() for k, v in row.items()}
+        name = _lead_field(row_norm, "nom", "name", "titre", "title")
+        if not name:
+            errors += 1
+            continue
+        external_id = _lead_field(row_norm, "id_rna", "external_id", "id")
+        if external_id and (external_id in existing_ids or external_id in seen_in_batch):
+            skipped_duplicates += 1
+            continue
+        if external_id:
+            seen_in_batch.add(external_id)
+        rows_norm.append((row_norm, name, external_id))
+
+    # Fuzzy anti-doublon (Partie A): same normalized name+city, or same phone,
+    # checked against both the existing collection and this same batch — via
+    # indexed keys so this stays fast even on a 30k+ row import.
+    name_city_keys = set()
+    phone_keys = set()
+    for row_norm, name, _ in rows_norm:
+        city = _lead_field(row_norm, "commune", "ville", "city")
+        phone = _lead_field(row_norm, "telephone", "téléphone", "phone", "tel")
+        name_city_keys.add(dedupe_key(name, city))
+        pk = normalize_phone(phone)
+        if pk:
+            phone_keys.add(pk)
+    existing_by_name_city, existing_by_phone = {}, {}
+    if name_city_keys:
+        async for d in db.leads.find({"name_city_key": {"$in": list(name_city_keys)}}, {"_id": 0, "id": 1, "name_city_key": 1}):
+            existing_by_name_city.setdefault(d["name_city_key"], d["id"])
+    if phone_keys:
+        async for d in db.leads.find({"phone_key": {"$in": list(phone_keys)}}, {"_id": 0, "id": 1, "phone_key": 1}):
+            existing_by_phone.setdefault(d["phone_key"], d["id"])
+
+    seen_name_city_in_batch = {}
+    for row_norm, name, external_id in rows_norm:
         try:
-            row_norm = {(k or "").strip().lower(): (v or "").strip() for k, v in row.items()}
-            name = _lead_field(row_norm, "nom", "name", "titre", "title")
-            if not name:
-                errors += 1
-                continue
-            external_id = _lead_field(row_norm, "id_rna", "external_id", "id")
-            if external_id and (external_id in existing_ids or external_id in seen_in_batch):
-                skipped_duplicates += 1
-                continue
-            if external_id:
-                seen_in_batch.add(external_id)
+            city = _lead_field(row_norm, "commune", "ville", "city")
+            phone = _lead_field(row_norm, "telephone", "téléphone", "phone", "tel")
+            name_city_key = dedupe_key(name, city)
+            phone_key = normalize_phone(phone)
+            dup_ids = []
+            if name_city_key in existing_by_name_city:
+                dup_ids.append(existing_by_name_city[name_city_key])
+            if phone_key and phone_key in existing_by_phone:
+                dup_ids.append(existing_by_phone[phone_key])
+            if name_city_key in seen_name_city_in_batch:
+                dup_ids.append(seen_name_city_in_batch[name_city_key])
+            seen_name_city_in_batch[name_city_key] = None  # placeholder, real id filled after insert
+            if dup_ids:
+                possible_duplicates += 1
             lead = Lead(
                 name=name,
                 email=_lead_field(row_norm, "email", "mail"),
-                phone=_lead_field(row_norm, "telephone", "téléphone", "phone", "tel"),
+                phone=phone,
                 address=_lead_field(row_norm, "adresse", "address"),
                 postal_code=_lead_field(row_norm, "code_postal", "postal_code", "cp"),
-                city=_lead_field(row_norm, "commune", "ville", "city"),
+                city=city,
                 website=_lead_field(row_norm, "site_web", "website", "web"),
                 description=_lead_field(row_norm, "objet", "description"),
                 source="rna_import" if external_id else "csv_import",
                 external_id=external_id,
+                name_city_key=name_city_key,
+                phone_key=phone_key,
+                probable_duplicate_of=list(dict.fromkeys(dup_ids)),
             )
+            seen_name_city_in_batch[name_city_key] = lead.id
             to_insert.append(serialize(lead))
         except Exception as e:
             logger.warning("lead import row failed: %s", e)
@@ -450,7 +499,40 @@ async def import_leads(file: UploadFile = File(...), user: dict = Depends(platfo
     if to_insert:
         await db.leads.insert_many(to_insert)
 
-    return {"imported": len(to_insert), "skipped_duplicates": skipped_duplicates, "errors": errors}
+    return {
+        "imported": len(to_insert),
+        "skipped_duplicates": skipped_duplicates,
+        "possible_duplicates": possible_duplicates,
+        "errors": errors,
+    }
+
+
+QUALIFICATION_FIELDS = {
+    "sport", "estimated_member_count", "estimated_team_count", "current_tool",
+    "decision_maker_role", "interest_level", "buying_horizon",
+}
+
+
+def _scope_to_own_leads(query: dict, user: dict) -> dict:
+    """A sales employee only ever sees their own leads + the unclaimed pool.
+    The platform admin sees everything — no restriction added for them."""
+    if user.get("is_platform_admin"):
+        return query
+    scope = {"$or": [{"assigned_to_user_id": user["id"]}, {"assigned_to_user_id": None}, {"assigned_to_user_id": ""}]}
+    if query:
+        return {"$and": [query, scope]}
+    return scope
+
+
+async def _assert_can_touch_lead(db, lead_id: str, user: dict) -> dict:
+    lead = await db.leads.find_one({"id": lead_id}, {"_id": 0})
+    if not lead:
+        raise HTTPException(404, "Lead introuvable")
+    if not user.get("is_platform_admin"):
+        owner = lead.get("assigned_to_user_id")
+        if owner and owner != user["id"]:
+            raise HTTPException(403, "Ce lead est déjà suivi par un(e) autre commercial(e)")
+    return lead
 
 
 @router.get("/leads")
@@ -459,6 +541,7 @@ async def list_leads(
     status: str = "",
     has_phone: bool = False,
     assigned_to_me: bool = False,
+    include_do_not_call: bool = False,
     page: int = 1,
     page_size: int = 30,
     user: dict = Depends(sales_user),
@@ -478,30 +561,159 @@ async def list_leads(
             {"city": {"$regex": safe, "$options": "i"}},
             {"email": {"$regex": safe, "$options": "i"}},
         ]
+    # Opted-out leads never surface in a call queue (Partie F) — only an admin
+    # reviewing compliance can ask to see them explicitly.
+    if not (include_do_not_call and user.get("is_platform_admin")):
+        query["do_not_call"] = {"$ne": True}
+
+    query = _scope_to_own_leads(query, user)
+
     page = max(1, page)
     page_size = min(max(1, page_size), 100)
     total = await db.leads.count_documents(query)
-    items = await db.leads.find(query, {"_id": 0}).sort("created_at", -1).skip((page - 1) * page_size).limit(page_size).to_list(page_size)
+    items = (
+        await db.leads.find(query, {"_id": 0})
+        .sort([("priority_score", -1), ("created_at", -1)])
+        .skip((page - 1) * page_size).limit(page_size).to_list(page_size)
+    )
     counts_by_status = {s: await db.leads.count_documents({**query, "status": s}) for s in LEAD_STATUSES}
     return {"items": items, "total": total, "page": page, "page_size": page_size, "counts_by_status": counts_by_status}
 
 
+@router.get("/leads/{lead_id}")
+async def get_lead(lead_id: str, user: dict = Depends(sales_user)):
+    db = get_db()
+    lead = await _assert_can_touch_lead(db, lead_id, user)
+    return lead
+
+
+@router.post("/leads")
+async def create_lead(data: LeadCreate, force: bool = False, user: dict = Depends(sales_user)):
+    """Manual single-lead creation — same anti-doublon check as the CSV import."""
+    db = get_db()
+    name_city_key = dedupe_key(data.name, data.city or "")
+    phone_key = normalize_phone(data.phone or "")
+    dup_query = {"$or": [{"name_city_key": name_city_key}]}
+    if phone_key:
+        dup_query["$or"].append({"phone_key": phone_key})
+    duplicates = await db.leads.find(dup_query, {"_id": 0, "id": 1, "name": 1, "city": 1, "phone": 1}).to_list(10)
+    if duplicates and not force:
+        raise HTTPException(409, {"message": "Doublon probable détecté", "duplicates": duplicates})
+    lead = Lead(
+        **data.model_dump(), name_city_key=name_city_key, phone_key=phone_key,
+        probable_duplicate_of=[d["id"] for d in duplicates],
+        assigned_to_user_id=user["id"], assigned_to_name=user.get("name", ""),
+    )
+    await db.leads.insert_one(serialize(lead))
+    return lead.model_dump()
+
+
+@router.get("/leads/duplicates")
+async def list_lead_duplicates(user: dict = Depends(platform_admin_user)):
+    db = get_db()
+    leads = await db.leads.find({"probable_duplicate_of": {"$ne": []}}, {"_id": 0}).to_list(5000)
+    other_ids = {d for l in leads for d in l.get("probable_duplicate_of", [])}
+    others = await db.leads.find({"id": {"$in": list(other_ids)}}, {"_id": 0}).to_list(len(other_ids) or 1)
+    others_by_id = {o["id"]: o for o in others}
+    return [
+        {"lead": l, "candidates": [others_by_id[d] for d in l.get("probable_duplicate_of", []) if d in others_by_id]}
+        for l in leads
+    ]
+
+
+@router.post("/leads/merge")
+async def merge_leads(payload: dict, user: dict = Depends(platform_admin_user)):
+    """Keep `keep_id`, fold in anything useful from `remove_id`, delete the rest."""
+    keep_id, remove_id = payload.get("keep_id"), payload.get("remove_id")
+    if not keep_id or not remove_id or keep_id == remove_id:
+        raise HTTPException(400, "Sélection invalide")
+    db = get_db()
+    keep = await db.leads.find_one({"id": keep_id}, {"_id": 0})
+    remove = await db.leads.find_one({"id": remove_id}, {"_id": 0})
+    if not keep or not remove:
+        raise HTTPException(404, "Lead introuvable")
+    fill_fields = ["email", "phone", "address", "postal_code", "city", "website", "description", "notes"]
+    update = {f: keep.get(f) or remove.get(f) for f in fill_fields}
+    update["probable_duplicate_of"] = [d for d in keep.get("probable_duplicate_of", []) if d != remove_id]
+    await db.leads.update_one({"id": keep_id}, {"$set": update})
+    await db.lead_activities.update_many({"lead_id": remove_id}, {"$set": {"lead_id": keep_id}})
+    await db.appointments.update_many({"lead_id": remove_id}, {"$set": {"lead_id": keep_id}})
+    await db.leads.delete_one({"id": remove_id})
+    return await db.leads.find_one({"id": keep_id}, {"_id": 0})
+
+
+@router.post("/leads/assign")
+async def assign_leads(payload: dict, user: dict = Depends(platform_admin_user)):
+    """Admin-only (re)assignment, individual or in bulk."""
+    lead_ids = payload.get("lead_ids") or []
+    employee_id = payload.get("user_id")
+    if not lead_ids:
+        raise HTTPException(400, "Aucun lead sélectionné")
+    db = get_db()
+    name = ""
+    if employee_id:
+        employee = await db.users.find_one({"id": employee_id}, {"_id": 0, "name": 1})
+        if not employee:
+            raise HTTPException(404, "Employé introuvable")
+        name = employee.get("name", "")
+    result = await db.leads.update_many(
+        {"id": {"$in": lead_ids}},
+        {"$set": {"assigned_to_user_id": employee_id or None, "assigned_to_name": name, "updated_at": datetime.now(timezone.utc).isoformat()}},
+    )
+    return {"updated": result.modified_count}
+
+
 @router.put("/leads/{lead_id}")
 async def update_lead(lead_id: str, payload: dict, user: dict = Depends(sales_user)):
-    """Update status/notes/contact info — touching a lead claims it for the current employee."""
-    allowed = {"status", "notes", "email", "phone", "name", "address", "postal_code", "city", "website"}
+    """Update status/notes/contact/qualification — touching an unclaimed lead
+    assigns it to the current employee. A lead already assigned to someone
+    else can only be touched by the platform admin."""
+    db = get_db()
+    lead = await _assert_can_touch_lead(db, lead_id, user)
+
+    allowed = {
+        "status", "notes", "email", "phone", "name", "address", "postal_code", "city", "website",
+        "rejection_reason", "rejection_note", "contact_source",
+    } | QUALIFICATION_FIELDS
     update = {k: v for k, v in payload.items() if k in allowed}
-    if "status" in update and update["status"] not in LEAD_STATUSES:
-        raise HTTPException(400, "Statut invalide")
-    update["assigned_to_user_id"] = user["id"]
-    update["assigned_to_name"] = user.get("name", "")
+
+    if "status" in update:
+        new_status = update["status"]
+        if new_status not in LEAD_STATUSES:
+            raise HTTPException(400, "Statut invalide")
+        if new_status == "refus":
+            reason = update.get("rejection_reason") or lead.get("rejection_reason")
+            if not reason or reason not in REJECTION_REASONS:
+                raise HTTPException(400, "Un motif de refus est obligatoire pour ce statut")
+
+    if "name" in update or "city" in update:
+        update["name_city_key"] = dedupe_key(update.get("name", lead["name"]), update.get("city", lead.get("city", "")))
+    if "phone" in update:
+        update["phone_key"] = normalize_phone(update["phone"])
+
+    # Do-not-call leads can still be corrected administratively, but never
+    # (re)assigned into a call queue by touching them.
+    if not lead.get("do_not_call"):
+        update["assigned_to_user_id"] = user["id"]
+        update["assigned_to_name"] = user.get("name", "")
+
     update["updated_at"] = datetime.now(timezone.utc).isoformat()
     if "status" in update or "notes" in update:
         update["last_contacted_at"] = datetime.now(timezone.utc).isoformat()
-    db = get_db()
-    result = await db.leads.update_one({"id": lead_id}, {"$set": update})
-    if result.matched_count == 0:
-        raise HTTPException(404, "Lead introuvable")
+
+    if QUALIFICATION_FIELDS & update.keys():
+        merged = {**lead, **update}
+        update["priority_score"] = compute_priority_score(merged)
+
+    await db.leads.update_one({"id": lead_id}, {"$set": update})
+
+    if "status" in update and update["status"] != lead.get("status"):
+        activity = LeadActivity(
+            lead_id=lead_id, type="status_change", author_id=user["id"], author_name=user.get("name", ""),
+            from_status=lead.get("status"), to_status=update["status"],
+        )
+        await db.lead_activities.insert_one(serialize(activity))
+
     return await db.leads.find_one({"id": lead_id}, {"_id": 0})
 
 
@@ -599,20 +811,26 @@ async def send_lead_campaign(payload: dict, user: dict = Depends(platform_admin_
     db = get_db()
     leads = await db.leads.find({"id": {"$in": lead_ids}}, {"_id": 0}).to_list(len(lead_ids))
     landing_url = frontend_url() or "https://clubpaper.fr"
-    sent, skipped = 0, 0
+    sent, skipped, skipped_dnc = 0, 0, 0
     now = datetime.now(timezone.utc).isoformat()
     for lead in leads:
+        if lead.get("do_not_call"):
+            # Compliance (Partie F): a lead that opted out never gets a campaign email,
+            # even if it was selected — checked here server-side, not just hidden in the UI.
+            skipped_dnc += 1
+            continue
         if not lead.get("email"):
             skipped += 1
             continue
+        unsubscribe_url = f"{landing_url}/api/public/leads/{lead['id']}/desinscription"
         await send_email(
             lead["email"], "Simplifiez la gestion de votre club — essai gratuit ClubPaper",
-            lead_campaign_html(lead["name"], landing_url, user.get("name", "")),
+            lead_campaign_html(lead["name"], landing_url, user.get("name", ""), unsubscribe_url),
             kind="lead_campaign",
         )
         await db.leads.update_one({"id": lead["id"]}, {"$set": {"campaign_sent_at": now}})
         sent += 1
-    return {"sent": sent, "skipped_no_email": skipped}
+    return {"sent": sent, "skipped_no_email": skipped, "skipped_do_not_call": skipped_dnc}
 
 
 @router.get("/leads/campaign-stats")
