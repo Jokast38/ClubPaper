@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Mail, MessageSquare, CheckCircle2, XCircle, Clock, AlertCircle, RefreshCw } from "lucide-react";
+import { Mail, MessageSquare, Send, CheckCircle2, XCircle, Clock, AlertCircle, RefreshCw } from "lucide-react";
 
 const STATUS_LABEL = {
   sent: { label: "Envoyé", cls: "status-paid", icon: CheckCircle2 },
@@ -66,9 +66,10 @@ export default function NotificationsPanel() {
         </div>
       </div>
 
-      <div className="grid sm:grid-cols-2 gap-4">
+      <div className="grid sm:grid-cols-3 gap-4">
         <ChannelStat icon={Mail} title="Emails" data={stats.email} testId="stats-email" />
         <ChannelStat icon={MessageSquare} title="SMS" data={stats.sms} testId="stats-sms" />
+        <ChannelStat icon={Send} title="Telegram" data={stats.telegram} testId="stats-telegram" />
       </div>
 
       <div className="mt-6 flex items-center gap-2 flex-wrap">
@@ -80,6 +81,7 @@ export default function NotificationsPanel() {
             <SelectItem value="all">Tous canaux</SelectItem>
             <SelectItem value="email">Emails</SelectItem>
             <SelectItem value="sms">SMS</SelectItem>
+            <SelectItem value="telegram">Telegram</SelectItem>
           </SelectContent>
         </Select>
         <Select value={filter.status || "all"} onValueChange={(v) => setFilter({...filter, status: v === "all" ? "" : v})}>
@@ -103,8 +105,8 @@ export default function NotificationsPanel() {
             const Icon = cfg.icon;
             return (
               <li key={l.id} className="flex items-start gap-3 p-3 rounded-xl border border-slate-100 hover:bg-slate-50" data-testid={`notif-log-${l.id}`}>
-                <div className={`w-8 h-8 rounded-lg grid place-items-center shrink-0 ${l.channel === "email" ? "bg-blue-100 text-blue-700" : "bg-purple-100 text-purple-700"}`}>
-                  {l.channel === "email" ? <Mail size={16} /> : <MessageSquare size={16} />}
+                <div className={`w-8 h-8 rounded-lg grid place-items-center shrink-0 ${l.channel === "email" ? "bg-blue-100 text-blue-700" : l.channel === "telegram" ? "bg-sky-100 text-sky-700" : "bg-purple-100 text-purple-700"}`}>
+                  {l.channel === "email" ? <Mail size={16} /> : l.channel === "telegram" ? <Send size={16} /> : <MessageSquare size={16} />}
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">

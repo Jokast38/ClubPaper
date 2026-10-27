@@ -41,6 +41,7 @@ class User(BaseModel):
     is_sales_employee: bool = False  # sales rep — access to the leads call-tracking workspace, no club of their own
     pending_referral_code: Optional[str] = None  # carried from registration to club creation (onboarding)
     email_signature: str = ""  # personal HTML signature, auto-appended when composing from the admin mailbox
+    telegram_chat_id: Optional[str] = None  # personal Telegram alerts (new leads, tickets, signups...) via the platform bot
     created_at: datetime = Field(default_factory=_now)
 
 
@@ -287,6 +288,9 @@ class ClubIntegrations(BaseModel):
     twilio_auth_token: Optional[str] = ""
     twilio_phone_from: Optional[str] = ""
     twilio_enabled: bool = False
+    telegram_bot_token: Optional[str] = ""
+    telegram_chat_id: Optional[str] = ""
+    telegram_enabled: bool = False
 
 
 class ClubIntegrationsPublic(BaseModel):
@@ -299,6 +303,8 @@ class ClubIntegrationsPublic(BaseModel):
     twilio_configured: bool = False
     twilio_phone_from: Optional[str] = ""
     twilio_enabled: bool = False
+    telegram_configured: bool = False
+    telegram_enabled: bool = False
 
 
 class PaymentTransaction(BaseModel):

@@ -8,6 +8,7 @@ from database import get_db
 from deps import current_user, get_user_club, serialize
 from email_utils import send_email, announcement_html, session_change_html
 from sms_utils import send_sms, sms_configured, format_phone, announcement_sms, session_change_sms
+from telegram_utils import send_club_telegram, telegram_configured
 from sanitizer import sanitize_html
 from routers.gcal import sync_session_upsert, sync_session_delete
 from plan_limits import check_announcement_limit
@@ -80,6 +81,8 @@ async def _notify_session_change(club: dict, session: dict, action: str):
                 await send_email(to, f"{club['name']} — Créneau {action}", html, club_id=club["id"], kind="session_change")
             if sms_ok and m.get("phone"):
                 await send_sms(club, format_phone(m["phone"]), session_change_sms(club["name"], session["title"], when), kind="session_change")
+        if telegram_configured(club):
+            await send_club_telegram(club, f"📅 Créneau {action}: {session['title']}\n{session.get('start_at','')} → {session.get('end_at','')}", kind="session_change")
     except Exception as e:
         logger.warning("session notify failed: %s", e)
 
@@ -121,3 +124,5 @@ async def _broadcast_announcement(club: dict, a: Announcement):
             await send_email(to, f"{club['name']} — {a.title}", html, club_id=club["id"], kind="announcement")
         if sms_ok and m.get("phone"):
             await send_sms(club, format_phone(m["phone"]), announcement_sms(club["name"], a.title), kind="announcement")
+    if telegram_configured(club):
+        await send_club_telegram(club, f"📣 Nouvelle annonce: {a.title}", kind="announcement")

@@ -22,6 +22,7 @@ async def stats(days: int = Query(30, ge=1, le=365), user: dict = Depends(curren
     out = {
         "email": {"sent": 0, "simulated": 0, "skipped": 0, "error": 0, "total": 0},
         "sms":   {"sent": 0, "simulated": 0, "skipped": 0, "error": 0, "total": 0},
+        "telegram": {"sent": 0, "simulated": 0, "skipped": 0, "error": 0, "total": 0},
         "days": days,
     }
     for r in rows:
@@ -30,7 +31,7 @@ async def stats(days: int = Query(30, ge=1, le=365), user: dict = Depends(curren
         if ch in out and st in out[ch]:
             out[ch][st] = r["count"]
             out[ch]["total"] += r["count"]
-    for ch in ("email", "sms"):
+    for ch in ("email", "sms", "telegram"):
         total = out[ch]["total"]
         real_attempts = out[ch]["sent"] + out[ch]["error"]
         out[ch]["success_rate"] = round(100 * out[ch]["sent"] / real_attempts, 1) if real_attempts else None
@@ -40,7 +41,7 @@ async def stats(days: int = Query(30, ge=1, le=365), user: dict = Depends(curren
 @router.get("/logs")
 async def logs(
     limit: int = Query(50, ge=1, le=200),
-    channel: str = Query("", pattern="^(email|sms|)$"),
+    channel: str = Query("", pattern="^(email|sms|telegram|)$"),
     status: str = Query("", pattern="^(sent|simulated|skipped|error|)$"),
     user: dict = Depends(current_user),
 ):

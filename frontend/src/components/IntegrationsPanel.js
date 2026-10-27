@@ -13,6 +13,7 @@ export default function IntegrationsPanel() {
   const [busy, setBusy] = useState(false);
   const [smsTo, setSmsTo] = useState("");
   const [smsBusy, setSmsBusy] = useState(false);
+  const [tgBusy, setTgBusy] = useState(false);
 
   const load = async () => {
     const { data } = await api.get("/integrations");
@@ -28,6 +29,9 @@ export default function IntegrationsPanel() {
       twilio_auth_token: "",
       twilio_phone_from: data.twilio_phone_from || "",
       twilio_enabled: data.twilio_enabled,
+      telegram_bot_token: "",
+      telegram_chat_id: "",
+      telegram_enabled: data.telegram_enabled,
     });
   };
   useEffect(() => { load(); }, []);
@@ -44,7 +48,7 @@ export default function IntegrationsPanel() {
       setStatus(data);
       toast.success("Intégrations enregistrées");
       // Clear secret input fields
-      setForm({ ...form, resend_api_key: "", stripe_secret_key: "", stripe_publishable_key: "", twilio_account_sid: "", twilio_auth_token: "" });
+      setForm({ ...form, resend_api_key: "", stripe_secret_key: "", stripe_publishable_key: "", twilio_account_sid: "", twilio_auth_token: "", telegram_bot_token: "", telegram_chat_id: "" });
     } catch { toast.error("Impossible d'enregistrer"); }
     finally { setBusy(false); }
   };
@@ -60,6 +64,17 @@ export default function IntegrationsPanel() {
       else toast.error(data.error || "Échec");
     } catch (e) { toast.error(e.response?.data?.detail || "Impossible d'envoyer"); }
     finally { setSmsBusy(false); }
+  };
+
+  const testTelegram = async () => {
+    setTgBusy(true);
+    try {
+      const { data } = await api.post("/telegram/test", {});
+      if (data.status === "sent") toast.success("Message Telegram envoyé ✅");
+      else if (data.status === "skipped") toast.info("Telegram désactivé ou non configuré — activez la carte");
+      else toast.error(data.error || "Échec");
+    } catch (e) { toast.error(e.response?.data?.detail || "Impossible d'envoyer"); }
+    finally { setTgBusy(false); }
   };
 
   if (!status) return null;
@@ -113,6 +128,30 @@ export default function IntegrationsPanel() {
             </Button>
           </div>
           <div className="text-xs text-slate-500 mt-1">Utilise les clés Twilio ci-dessus. Assurez-vous que la carte est activée.</div>
+        </div>
+      </IntegrationCard>
+
+      <IntegrationCard
+        icon={MessageSquare}
+        title="Telegram — Notifications du bureau"
+        configured={status.telegram_configured}
+        enabled={form.telegram_enabled}
+        onToggle={(v) => setForm({...form, telegram_enabled: v})}
+        testId="int-telegram"
+      >
+        <div><Label>Jeton du bot</Label><Input type="password" placeholder={status.telegram_configured ? "•••••••••• (configuré)" : "123456:ABC-..."} value={form.telegram_bot_token} onChange={(e) => setForm({...form, telegram_bot_token: e.target.value})} data-testid="telegram-token-input" className="mt-1 h-11" /></div>
+        <div><Label>Identifiant du chat</Label><Input placeholder="123456789" value={form.telegram_chat_id} onChange={(e) => setForm({...form, telegram_chat_id: e.target.value})} data-testid="telegram-chatid-input" className="mt-1 h-11" /></div>
+        <div className="sm:col-span-2 text-xs text-slate-500">
+          Créez un bot gratuit avec <strong>@BotFather</strong> sur Telegram pour obtenir le jeton, puis ajoutez ce bot au groupe de votre bureau et récupérez l'identifiant du chat avec <strong>@userinfobot</strong> (ou l'API <code>getUpdates</code> du bot).
+        </div>
+        <div className="sm:col-span-2 border-t border-slate-100 pt-3 mt-1">
+          <Label>Envoyer un message de test</Label>
+          <div className="mt-1 flex gap-2">
+            <Button type="button" onClick={testTelegram} disabled={tgBusy} data-testid="telegram-test-btn" variant="outline" className="h-11 rounded-md whitespace-nowrap">
+              <Send size={14} className="mr-2" />{tgBusy ? "…" : "Tester Telegram"}
+            </Button>
+          </div>
+          <div className="text-xs text-slate-500 mt-1">Enregistrez d'abord vos clés ci-dessus, puis testez.</div>
         </div>
       </IntegrationCard>
 

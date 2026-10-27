@@ -6,6 +6,7 @@ from models import ClubCreate, Club, ClubUpdate, ClubTheme, Prospect, ClubIntegr
 from database import get_db
 from deps import current_user, get_user_club, serialize, slugify, unique_club_slug, frontend_url
 from sms_utils import send_sms, format_phone
+from telegram_utils import send_club_telegram, notify_admins_telegram
 from scheduler_jobs import run_fee_reminders, run_season_reminders
 from email_utils import send_email, club_ready_html, referral_signup_html
 
@@ -41,6 +42,7 @@ async def create_club(data: ClubCreate, user: dict = Depends(current_user)):
     to = club.email or user.get("email", "")
     public_url = f"{frontend_url()}/c/{club.slug}"
     asyncio.create_task(send_email(to, f"Bravo, {club.name} est prêt ! 🎉", club_ready_html(doc, public_url), club_id=club.id, kind="club_ready"))
+    asyncio.create_task(notify_admins_telegram(f"🎉 Nouveau club inscrit: {club.name} ({club.sport})"))
 
     if referrer:
         referrer_owner = await db.users.find_one({"id": referrer.get("owner_id")}, {"_id": 0, "email": 1})
@@ -162,6 +164,8 @@ def _integrations_public(raw: dict) -> dict:
         "twilio_configured": bool(raw.get("twilio_account_sid") and raw.get("twilio_auth_token")),
         "twilio_phone_from": raw.get("twilio_phone_from", ""),
         "twilio_enabled": bool(raw.get("twilio_enabled")),
+        "telegram_configured": bool(raw.get("telegram_bot_token") and raw.get("telegram_chat_id")),
+        "telegram_enabled": bool(raw.get("telegram_enabled")),
     }
 
 
@@ -178,7 +182,7 @@ async def update_integrations(data: ClubIntegrations, user: dict = Depends(curre
     payload = data.model_dump(exclude_none=True)
     existing = club.get("integrations") or {}
     for k, v in payload.items():
-        if v == "" and k in {"resend_api_key", "stripe_secret_key", "stripe_publishable_key", "twilio_account_sid", "twilio_auth_token"}:
+        if v == "" and k in {"resend_api_key", "stripe_secret_key", "stripe_publishable_key", "twilio_account_sid", "twilio_auth_token", "telegram_bot_token", "telegram_chat_id"}:
             continue
         existing[k] = v
     await db.clubs.update_one({"id": club["id"]}, {"$set": {"integrations": existing}})
@@ -206,3 +210,10 @@ async def sms_test(payload: dict, user: dict = Depends(current_user)):
     if not to:
         raise HTTPException(400, "Numéro requis")
     return await send_sms(club, format_phone(to), body, kind="test")
+
+
+@router.post("/telegram/test")
+async def telegram_test(payload: dict, user: dict = Depends(current_user)):
+    club = await get_user_club(user)
+    text = payload.get("text") or f"Test Telegram depuis {club['name']} via ClubPaper. Si vous recevez ce message, tout fonctionne !"
+    return await send_club_telegram(club, text, kind="test")

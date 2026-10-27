@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import RichTextEditor from "@/components/RichTextEditor";
-import { Inbox, Send, FileText, PenSquare, Paperclip, X, Download, RefreshCw, Trash2, Pencil } from "lucide-react";
+import { Inbox, Send, FileText, PenSquare, Paperclip, X, Download, RefreshCw, Trash2, Pencil, Bell } from "lucide-react";
 import { toast } from "sonner";
 
 export default function Mailbox() {
@@ -34,6 +34,7 @@ export default function Mailbox() {
           { id: "sent", label: "Envoyés", icon: Send },
           { id: "templates", label: "Modèles", icon: FileText },
           { id: "signature", label: "Signature", icon: Pencil },
+          { id: "alerts", label: "Alertes Telegram", icon: Bell },
         ].map((t) => (
           <button
             key={t.id}
@@ -50,6 +51,7 @@ export default function Mailbox() {
       {folder === "sent" && <SentFolder />}
       {folder === "templates" && <TemplatesFolder onUseTemplate={(tpl) => openCompose({ subject: tpl.subject, body_html: tpl.body_html })} />}
       {folder === "signature" && <SignatureSettings />}
+      {folder === "alerts" && <TelegramAlertsSettings />}
 
       <ComposeDialog open={composeOpen} onOpenChange={setComposeOpen} prefill={composePrefill} />
     </div>
@@ -316,6 +318,59 @@ function SignatureSettings() {
       <Button onClick={save} disabled={busy} className="mt-4 rounded-full" style={{background:"var(--club-primary)"}} data-testid="mailbox-save-signature-btn">
         {busy ? "Enregistrement…" : "Enregistrer la signature"}
       </Button>
+    </div>
+  );
+}
+
+function TelegramAlertsSettings() {
+  const [chatId, setChatId] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [testBusy, setTestBusy] = useState(false);
+
+  useEffect(() => {
+    api.get("/admin/telegram").then(({ data }) => setChatId(data.telegram_chat_id || ""));
+  }, []);
+
+  const save = async () => {
+    setBusy(true);
+    try {
+      await api.put("/admin/telegram", { telegram_chat_id: chatId });
+      toast.success("Identifiant Telegram enregistré");
+    } catch { toast.error("Impossible d'enregistrer"); }
+    finally { setBusy(false); }
+  };
+
+  const test = async () => {
+    if (!chatId.trim()) { toast.error("Enregistrez d'abord votre identifiant de chat"); return; }
+    setTestBusy(true);
+    try {
+      await api.post("/admin/telegram/test");
+      toast.success("Message Telegram envoyé ✅");
+    } catch (e) { toast.error(e.response?.data?.detail || "Impossible d'envoyer"); }
+    finally { setTestBusy(false); }
+  };
+
+  return (
+    <div className="mt-4 paper-card p-6 max-w-2xl">
+      <h3 className="font-display font-semibold text-lg text-slate-900 mb-1">Alertes Telegram personnelles</h3>
+      <p className="text-sm text-slate-600 mb-4">
+        Recevez sur Telegram vos réclamations, les nouvelles inscriptions de clubs et les passages au plan payant, en temps réel.
+      </p>
+      <div>
+        <Label>Identifiant de chat Telegram</Label>
+        <Input value={chatId} onChange={(e) => setChatId(e.target.value)} placeholder="123456789" className="mt-1 h-11" data-testid="telegram-alerts-chatid" />
+        <p className="text-xs text-slate-500 mt-1">
+          Ouvrez une conversation avec <strong>@userinfobot</strong> sur Telegram pour obtenir votre identifiant, puis démarrez une conversation avec le bot ClubPaper avant de tester.
+        </p>
+      </div>
+      <div className="mt-4 flex gap-2">
+        <Button onClick={save} disabled={busy} className="rounded-full" style={{background:"var(--club-primary)"}} data-testid="telegram-alerts-save-btn">
+          {busy ? "Enregistrement…" : "Enregistrer"}
+        </Button>
+        <Button onClick={test} disabled={testBusy} variant="outline" className="rounded-full" data-testid="telegram-alerts-test-btn">
+          {testBusy ? "…" : "Tester"}
+        </Button>
+      </div>
     </div>
   );
 }

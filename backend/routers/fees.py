@@ -11,6 +11,7 @@ from models import Fee, CheckoutRequest, PaymentTransaction
 from database import get_db
 from deps import current_user, get_user_club, serialize
 from email_utils import send_email, reminder_html, referral_reward_html, referral_pending_html
+from telegram_utils import notify_admins_telegram, send_club_telegram, telegram_configured
 from sms_utils import send_sms, sms_configured, format_phone, reminder_sms
 from plan_limits import check_payment_allowed
 
@@ -140,6 +141,8 @@ async def send_all_reminders(user: dict = Depends(current_user)):
             {"$set": {"reminders_sent": level, "last_reminder_at": datetime.now(timezone.utc).isoformat()}},
         )
         sent += 1
+    if sent and telegram_configured(club):
+        await send_club_telegram(club, f"💸 {sent} rappel(s) de cotisation envoyé(s)", kind="reminder")
     return {"sent": sent}
 
 
@@ -233,6 +236,7 @@ async def _activate_club_subscription(db, club_id: str, lookup_key: str, stripe_
     await db.clubs.update_one({"id": club_id}, {"$set": update})
     if stripe_customer_id:
         club["stripe_customer_id"] = stripe_customer_id
+    asyncio.create_task(notify_admins_telegram(f"💰 {club.get('name','')} vient de passer au plan payant ({billing_mode})"))
 
     # This club may itself have been accumulating referral rewards while it
     # was free/trial (as a referrer) — apply them now that it has billing set up.

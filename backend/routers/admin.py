@@ -17,6 +17,7 @@ from deps import platform_admin_user, current_user, sales_user, serialize, delet
 from auth_utils import hash_password
 from models import SupportTicketCreate, SupportTicket, Lead, LeadCreate, EmployeeCreate, User, LEAD_STATUSES
 from email_utils import send_email, support_ticket_html, support_reply_html, lead_campaign_html
+from telegram_utils import notify_admins_telegram, notify_admin_telegram
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 logger = logging.getLogger(__name__)
@@ -235,6 +236,7 @@ async def platform_notifications_stats(days: int = Query(30, ge=1, le=365), user
     out = {
         "email": {"sent": 0, "simulated": 0, "skipped": 0, "error": 0, "total": 0},
         "sms":   {"sent": 0, "simulated": 0, "skipped": 0, "error": 0, "total": 0},
+        "telegram": {"sent": 0, "simulated": 0, "skipped": 0, "error": 0, "total": 0},
         "days": days,
     }
     for r in rows:
@@ -267,6 +269,9 @@ async def submit_support_ticket(data: SupportTicketCreate, user: dict = Depends(
                 admin["email"], f"[Support] {data.subject}", support_ticket_html(ticket.model_dump()),
                 kind="support_ticket",
             ))
+    asyncio.create_task(notify_admins_telegram(
+        f"🆘 Nouvelle réclamation\n{ticket.subject}\nClub: {club_name or '—'}\nDe: {ticket.user_name} ({ticket.user_email})"
+    ))
     return {"ok": True}
 
 
@@ -331,6 +336,33 @@ async def create_employee(data: EmployeeCreate, user: dict = Depends(platform_ad
 async def list_employees(user: dict = Depends(platform_admin_user)):
     db = get_db()
     return await db.users.find({"is_sales_employee": True}, {"_id": 0, "password_hash": 0}).sort("created_at", -1).to_list(200)
+
+
+# ---- Personal Telegram alerts (platform admin) ----
+@router.get("/telegram")
+async def get_my_telegram(user: dict = Depends(platform_admin_user)):
+    return {"telegram_chat_id": user.get("telegram_chat_id") or ""}
+
+
+@router.put("/telegram")
+async def set_my_telegram(payload: dict, user: dict = Depends(platform_admin_user)):
+    db = get_db()
+    chat_id = (payload.get("telegram_chat_id") or "").strip()
+    await db.users.update_one({"id": user["id"]}, {"$set": {"telegram_chat_id": chat_id}})
+    return {"telegram_chat_id": chat_id}
+
+
+@router.post("/telegram/test")
+async def test_my_telegram(user: dict = Depends(platform_admin_user)):
+    chat_id = user.get("telegram_chat_id") or ""
+    if not chat_id:
+        raise HTTPException(400, "Renseignez d'abord votre identifiant de chat Telegram")
+    result = await notify_admin_telegram(chat_id, "✅ Test ClubPaper: vos alertes Telegram sont bien configurées !")
+    if result.get("status") == "error":
+        raise HTTPException(400, result.get("error") or "Envoi impossible")
+    if result.get("status") == "skipped" and result.get("reason") == "TELEGRAM_BOT_TOKEN not set":
+        raise HTTPException(400, "Le bot Telegram de la plateforme n'est pas configuré (TELEGRAM_BOT_TOKEN manquant côté serveur)")
+    return result
 
 
 @router.delete("/employees/{employee_id}")
