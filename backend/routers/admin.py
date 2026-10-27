@@ -17,7 +17,8 @@ from deps import platform_admin_user, current_user, sales_user, serialize, delet
 from auth_utils import hash_password
 from models import (
     SupportTicketCreate, SupportTicket, Lead, LeadCreate, EmployeeCreate, User,
-    LEAD_STATUSES, LEAD_EXIT_STATUSES, REJECTION_REASONS, LeadActivity,
+    LEAD_STATUSES, LEAD_EXIT_STATUSES, REJECTION_REASONS, LeadActivity, LeadActivityCreate,
+    CALL_OUTCOMES,
 )
 from email_utils import send_email, support_ticket_html, support_reply_html, lead_campaign_html
 from telegram_utils import notify_admins_telegram, notify_admin_telegram
@@ -580,13 +581,6 @@ async def list_leads(
     return {"items": items, "total": total, "page": page, "page_size": page_size, "counts_by_status": counts_by_status}
 
 
-@router.get("/leads/{lead_id}")
-async def get_lead(lead_id: str, user: dict = Depends(sales_user)):
-    db = get_db()
-    lead = await _assert_can_touch_lead(db, lead_id, user)
-    return lead
-
-
 @router.post("/leads")
 async def create_lead(data: LeadCreate, force: bool = False, user: dict = Depends(sales_user)):
     """Manual single-lead creation — same anti-doublon check as the CSV import."""
@@ -663,6 +657,26 @@ async def assign_leads(payload: dict, user: dict = Depends(platform_admin_user))
     return {"updated": result.modified_count}
 
 
+@router.put("/leads/{lead_id}/annuaire")
+async def set_lead_annuaire_visibility(lead_id: str, payload: dict, user: dict = Depends(platform_admin_user)):
+    """Publish/unpublish a lead on the public directory (Partie E3).
+    Admin-only: this controls what's visible to the public internet, not a
+    regular call-queue action. A slug is allocated once, on first publish,
+    and kept stable afterwards so a public URL never breaks."""
+    db = get_db()
+    lead = await db.leads.find_one({"id": lead_id}, {"_id": 0})
+    if not lead:
+        raise HTTPException(404, "Lead introuvable")
+    visible = bool(payload.get("visible"))
+    update = {"annuaire_visible": visible, "updated_at": datetime.now(timezone.utc).isoformat()}
+    if visible and not lead.get("annuaire_slug"):
+        from deps import slugify as _slugify, unique_lead_slug
+        base = _slugify(f"{lead.get('name','')}-{lead.get('city','')}" if lead.get("city") else lead.get("name", ""))
+        update["annuaire_slug"] = await unique_lead_slug(base)
+    await db.leads.update_one({"id": lead_id}, {"$set": update})
+    return await db.leads.find_one({"id": lead_id}, {"_id": 0})
+
+
 @router.put("/leads/{lead_id}")
 async def update_lead(lead_id: str, payload: dict, user: dict = Depends(sales_user)):
     """Update status/notes/contact/qualification — touching an unclaimed lead
@@ -715,6 +729,106 @@ async def update_lead(lead_id: str, payload: dict, user: dict = Depends(sales_us
         await db.lead_activities.insert_one(serialize(activity))
 
     return await db.leads.find_one({"id": lead_id}, {"_id": 0})
+
+
+@router.get("/leads/{lead_id}/activities")
+async def list_lead_activities(lead_id: str, user: dict = Depends(sales_user)):
+    """Unified activity feed: notes, status changes, calls and sent emails,
+    most-recent-first. (Appointments join this feed once Partie C adds them.)"""
+    db = get_db()
+    await _assert_can_touch_lead(db, lead_id, user)
+    return await db.lead_activities.find({"lead_id": lead_id}, {"_id": 0}).sort("created_at", -1).to_list(500)
+
+
+@router.post("/leads/{lead_id}/activities")
+async def create_lead_activity(lead_id: str, data: LeadActivityCreate, user: dict = Depends(sales_user)):
+    """Add a note, or log a call outcome (one-click from the call queue).
+    A 'callback' outcome schedules the lead's next callback_at, which resurfaces
+    it at the top of the employee's queue; any other outcome clears it."""
+    db = get_db()
+    lead = await _assert_can_touch_lead(db, lead_id, user)
+
+    if data.type not in {"note", "call"}:
+        raise HTTPException(400, "Type d'activité invalide")
+
+    now = datetime.now(timezone.utc)
+    activity_kwargs = dict(
+        lead_id=lead_id, type=data.type, author_id=user["id"], author_name=user.get("name", ""),
+        text=(data.text or "").strip(),
+    )
+    lead_update = {"last_contacted_at": now.isoformat(), "updated_at": now.isoformat()}
+
+    if data.type == "note":
+        activity_kwargs["note_type"] = data.note_type or "appel"
+    else:  # call
+        if data.call_outcome not in CALL_OUTCOMES:
+            raise HTTPException(400, "Résultat d'appel invalide")
+        activity_kwargs["call_outcome"] = data.call_outcome
+        activity_kwargs["call_duration_seconds"] = data.call_duration_seconds
+        if data.call_outcome == "callback":
+            if not data.callback_at:
+                raise HTTPException(400, "Une date de rappel est requise pour ce résultat")
+            activity_kwargs["callback_at"] = data.callback_at
+            lead_update["callback_at"] = data.callback_at.isoformat()
+        else:
+            lead_update["callback_at"] = None
+
+    if not lead.get("do_not_call"):
+        lead_update["assigned_to_user_id"] = user["id"]
+        lead_update["assigned_to_name"] = user.get("name", "")
+
+    activity = LeadActivity(**activity_kwargs)
+    await db.lead_activities.insert_one(serialize(activity))
+    await db.leads.update_one({"id": lead_id}, {"$set": lead_update})
+    return activity.model_dump()
+
+
+@router.put("/leads/{lead_id}/activities/{activity_id}")
+async def update_lead_activity(lead_id: str, activity_id: str, payload: dict, user: dict = Depends(sales_user)):
+    """Edit a note's text — author only, or the platform admin (moderation)."""
+    db = get_db()
+    activity = await db.lead_activities.find_one({"id": activity_id, "lead_id": lead_id}, {"_id": 0})
+    if not activity:
+        raise HTTPException(404, "Activité introuvable")
+    if activity["type"] != "note":
+        raise HTTPException(400, "Seules les notes peuvent être modifiées")
+    if activity["author_id"] != user["id"] and not user.get("is_platform_admin"):
+        raise HTTPException(403, "Vous ne pouvez modifier que vos propres notes")
+    text = (payload.get("text") or "").strip()
+    if not text:
+        raise HTTPException(400, "Le texte de la note est requis")
+    await db.lead_activities.update_one({"id": activity_id}, {"$set": {"text": text}})
+    return await db.lead_activities.find_one({"id": activity_id}, {"_id": 0})
+
+
+@router.delete("/leads/{lead_id}/activities/{activity_id}")
+async def delete_lead_activity(lead_id: str, activity_id: str, user: dict = Depends(sales_user)):
+    """Delete a note — author only, or the platform admin (moderation)."""
+    db = get_db()
+    activity = await db.lead_activities.find_one({"id": activity_id, "lead_id": lead_id}, {"_id": 0})
+    if not activity:
+        raise HTTPException(404, "Activité introuvable")
+    if activity["type"] != "note":
+        raise HTTPException(400, "Seules les notes peuvent être supprimées")
+    if activity["author_id"] != user["id"] and not user.get("is_platform_admin"):
+        raise HTTPException(403, "Vous ne pouvez supprimer que vos propres notes")
+    await db.lead_activities.delete_one({"id": activity_id})
+    return {"ok": True}
+
+
+@router.get("/leads/callbacks")
+async def list_callbacks(user: dict = Depends(sales_user)):
+    """The employee's callback queue: overdue first, then due today — this is
+    what the daily morning job also emails/Telegrams them."""
+    db = get_db()
+    now = datetime.now(timezone.utc)
+    end_of_today = now.replace(hour=23, minute=59, second=59, microsecond=0)
+    query = {"callback_at": {"$ne": None, "$lte": end_of_today.isoformat()}, "do_not_call": {"$ne": True}}
+    query = _scope_to_own_leads(query, user)
+    leads = await db.leads.find(query, {"_id": 0}).sort("callback_at", 1).to_list(500)
+    overdue = [l for l in leads if l["callback_at"] < now.isoformat()]
+    today = [l for l in leads if l["callback_at"] >= now.isoformat()]
+    return {"overdue": overdue, "today": today}
 
 
 @router.delete("/leads/{lead_id}")
@@ -829,6 +943,10 @@ async def send_lead_campaign(payload: dict, user: dict = Depends(platform_admin_
             kind="lead_campaign",
         )
         await db.leads.update_one({"id": lead["id"]}, {"$set": {"campaign_sent_at": now}})
+        await db.lead_activities.insert_one(serialize(LeadActivity(
+            lead_id=lead["id"], type="email", author_id=user["id"], author_name=user.get("name", ""),
+            text="Email de prospection envoyé",
+        )))
         sent += 1
     return {"sent": sent, "skipped_no_email": skipped, "skipped_do_not_call": skipped_dnc}
 
@@ -874,3 +992,13 @@ async def campaign_stats(user: dict = Depends(platform_admin_user)):
             for l in converted
         ],
     }
+
+
+# NOTE: declared after every literal "/leads/<word>" route above (duplicates,
+# callbacks, campaign-stats, ...) — a path parameter route registered earlier
+# would otherwise swallow those literal paths first.
+@router.get("/leads/{lead_id}")
+async def get_lead(lead_id: str, user: dict = Depends(sales_user)):
+    db = get_db()
+    lead = await _assert_can_touch_lead(db, lead_id, user)
+    return lead

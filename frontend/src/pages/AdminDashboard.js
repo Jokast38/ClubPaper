@@ -3,7 +3,7 @@ import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip } from "recharts";
-import { Building2, Users, TrendingUp, Wallet, Mail, MessageSquare, CheckCircle2, RefreshCw, Trash2, Send, Gift, MailCheck, MailX, Target } from "lucide-react";
+import { Building2, Users, TrendingUp, Wallet, Mail, MessageSquare, CheckCircle2, RefreshCw, Trash2, Send, Gift, MailCheck, MailX, Target, PhoneCall, CalendarCheck, Flame, Download, UserCheck, BadgeCheck, XCircle } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 
@@ -91,6 +91,8 @@ export default function AdminDashboard() {
     { id: "support", label: `Réclamations${tickets.filter(t => t.status === "new").length ? ` (${tickets.filter(t => t.status === "new").length})` : ""}` },
     { id: "referrals", label: "Parrainage" },
     { id: "campaigns", label: "Campagnes mails" },
+    { id: "prospection", label: "Prospection" },
+    { id: "claims", label: "Revendications" },
   ];
 
   return (
@@ -124,6 +126,8 @@ export default function AdminDashboard() {
       {tab === "support" && <SupportTab tickets={tickets} onResolve={resolveTicket} onReply={replyTicket} />}
       {tab === "referrals" && <ReferralsTab referrals={referrals} />}
       {tab === "campaigns" && campaignStats && <CampaignsTab stats={campaignStats} />}
+      {tab === "prospection" && <ProspectionTab />}
+      {tab === "claims" && <ClaimsTab />}
     </div>
   );
 }
@@ -513,6 +517,298 @@ function CampaignsTab({ stats }) {
             </div>
           ))}
         </div>
+      </div>
+    </div>
+  );
+}
+
+const PIPELINE_STAGE_LABEL = {
+  nouveau: "Nouveau", a_appeler: "À appeler", contacte: "Contacté", interesse: "Intéressé",
+  rdv_planifie: "RDV planifié", essai_demarre: "Essai démarré", club_actif: "Club actif", client_payant: "Client payant",
+};
+const EXIT_STAGE_LABEL = { refus: "Refus", injoignable: "Injoignable" };
+const REJECTION_REASON_LABEL = {
+  trop_cher: "Trop cher", deja_equipe: "Déjà équipé", pas_le_temps: "Pas le temps",
+  decision_bureau: "Décision du bureau", pas_interesse: "Pas intéressé", autre: "Autre",
+};
+
+function ProspectionTab() {
+  const [period, setPeriod] = useState(90);
+  const [source, setSource] = useState("");
+  const [employeeId, setEmployeeId] = useState("");
+  const [employees, setEmployees] = useState([]);
+  const [funnel, setFunnel] = useState(null);
+  const [activity, setActivity] = useState(null);
+  const [rejections, setRejections] = useState(null);
+  const [hotClubs, setHotClubs] = useState([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => { api.get("/admin/employees").then(({ data }) => setEmployees(data)).catch(() => {}); }, []);
+
+  const load = async () => {
+    setLoading(true);
+    const params = { period_days: period, source, employee_id: employeeId };
+    try {
+      const [f, a, r, h] = await Promise.all([
+        api.get("/admin/prospection/funnel", { params }),
+        api.get("/admin/prospection/activity", { params }),
+        api.get("/admin/prospection/rejections", { params }),
+        api.get("/admin/prospection/hot-clubs"),
+      ]);
+      setFunnel(f.data); setActivity(a.data); setRejections(r.data); setHotClubs(h.data);
+    } finally { setLoading(false); }
+  };
+
+  useEffect(() => { load(); }, [period, source, employeeId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const exportCsv = async (table) => {
+    // Auth is a Bearer token, not a cookie, so a plain window.open() would hit
+    // the endpoint unauthenticated — fetch it via axios and download the blob instead.
+    try {
+      const { data } = await api.get("/admin/prospection/export", {
+        params: { table, period_days: period, source, employee_id: employeeId },
+        responseType: "blob",
+      });
+      const url = URL.createObjectURL(data);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `prospection_${table}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch { toast.error("Impossible d'exporter"); }
+  };
+
+  return (
+    <div className="mt-6">
+      <div className="flex flex-wrap gap-3 items-center">
+        <Select value={String(period)} onValueChange={(v) => setPeriod(Number(v))}>
+          <SelectTrigger className="h-10 w-[160px]" data-testid="prospection-period"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="7">7 derniers jours</SelectItem>
+            <SelectItem value="30">30 derniers jours</SelectItem>
+            <SelectItem value="90">90 derniers jours</SelectItem>
+            <SelectItem value="365">12 derniers mois</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select value={source || "all"} onValueChange={(v) => setSource(v === "all" ? "" : v)}>
+          <SelectTrigger className="h-10 w-[160px]" data-testid="prospection-source"><SelectValue placeholder="Toutes sources" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Toutes sources</SelectItem>
+            <SelectItem value="rna_import">Import RNA</SelectItem>
+            <SelectItem value="csv_import">Import CSV</SelectItem>
+            <SelectItem value="annuaire">Annuaire</SelectItem>
+            <SelectItem value="manuel">Manuel</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select value={employeeId || "all"} onValueChange={(v) => setEmployeeId(v === "all" ? "" : v)}>
+          <SelectTrigger className="h-10 w-[180px]" data-testid="prospection-employee"><SelectValue placeholder="Tous commerciaux" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Tous commerciaux</SelectItem>
+            {employees.map((e) => <SelectItem key={e.id} value={e.id}>{e.name}</SelectItem>)}
+          </SelectContent>
+        </Select>
+      </div>
+
+      {loading && <p className="mt-6 text-sm text-slate-400">Chargement…</p>}
+
+      {activity && (
+        <div className="mt-6 grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <KpiCard icon={PhoneCall} label="Appels effectués" value={activity.calls_made} tint="slate" />
+          <KpiCard icon={UserCheck} label="Décideurs joints" value={activity.decision_makers_reached} tint="amber" />
+          <KpiCard icon={CalendarCheck} label="RDV pris" value={activity.appointments_booked} tint="orange" />
+          <KpiCard icon={CheckCircle2} label="Conversions" value={activity.conversions} tint="emerald" />
+        </div>
+      )}
+
+      {funnel && (
+        <div className="mt-6 paper-card p-6">
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <h3 className="font-display font-semibold text-lg text-slate-900">Entonnoir de conversion</h3>
+            <Button size="sm" variant="outline" className="rounded-full" onClick={() => exportCsv("funnel")} data-testid="prospection-export-funnel">
+              <Download size={14} className="mr-1.5" />Export CSV
+            </Button>
+          </div>
+          <div className="mt-4 space-y-2">
+            {Object.entries(funnel.stage_counts).map(([stage, count], i, arr) => {
+              const max = arr[0][1] || 1;
+              const pct = Math.round((count / max) * 100);
+              const nextEntry = arr[i + 1];
+              const rate = nextEntry ? funnel.conversion_rates[`${stage}->${nextEntry[0]}`] : null;
+              return (
+                <div key={stage}>
+                  <div className="flex justify-between text-sm mb-1">
+                    <span className="text-slate-700">{PIPELINE_STAGE_LABEL[stage] || stage}</span>
+                    <span className="text-slate-500">{count}{rate !== null ? ` · ${rate}% → ${PIPELINE_STAGE_LABEL[nextEntry[0]]}` : ""}</span>
+                  </div>
+                  <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
+                    <div className="h-full" style={{ width: `${pct}%`, background: "var(--club-primary)" }} />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          <div className="mt-4 flex gap-4 text-sm text-slate-500">
+            {Object.entries(funnel.exit_counts).map(([stage, count]) => (
+              <span key={stage}>{EXIT_STAGE_LABEL[stage] || stage} : <b className="text-slate-700">{count}</b></span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {rejections && (
+        <div className="mt-6 paper-card p-6">
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <h3 className="font-display font-semibold text-lg text-slate-900">Motifs de refus ({rejections.total})</h3>
+            <Button size="sm" variant="outline" className="rounded-full" onClick={() => exportCsv("rejections")} data-testid="prospection-export-rejections">
+              <Download size={14} className="mr-1.5" />Export CSV
+            </Button>
+          </div>
+          <div className="mt-4 space-y-2">
+            {Object.entries(rejections.breakdown).map(([reason, count]) => {
+              const pct = rejections.total ? Math.round((count / rejections.total) * 100) : 0;
+              return (
+                <div key={reason}>
+                  <div className="flex justify-between text-sm mb-1">
+                    <span className="text-slate-700">{REJECTION_REASON_LABEL[reason] || reason}</span>
+                    <span className="text-slate-500">{count} ({pct}%)</span>
+                  </div>
+                  <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
+                    <div className="h-full bg-red-400" style={{ width: `${pct}%` }} />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      <div className="mt-6 paper-card p-6">
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <h3 className="font-display font-semibold text-lg text-slate-900 flex items-center gap-2"><Flame size={18} className="text-orange-500" />Clubs chauds (proches d'une limite ou fin d'essai)</h3>
+          <Button size="sm" variant="outline" className="rounded-full" onClick={() => exportCsv("hot_clubs")} data-testid="prospection-export-hot-clubs">
+            <Download size={14} className="mr-1.5" />Export CSV
+          </Button>
+        </div>
+        <div className="mt-4 space-y-2">
+          {hotClubs.length === 0 && <p className="text-sm text-slate-500">Aucun club chaud pour le moment.</p>}
+          {hotClubs.map((c) => (
+            <div key={c.id} className="flex items-center justify-between text-sm px-3 py-2 rounded-lg bg-slate-50" data-testid={`hot-club-${c.id}`}>
+              <div>
+                <div className="font-medium text-slate-900">{c.name}</div>
+                <div className="text-xs text-slate-500">{c.owner_email}{c.plan === "trial" && c.trial_ends_at ? ` · essai jusqu'au ${new Date(c.trial_ends_at).toLocaleDateString("fr-FR")}` : ""}</div>
+              </div>
+              <div className="flex items-center gap-2">
+                {c.upgrade_prompt_count > 0 && <span className="pill-tag status-overdue">{c.upgrade_prompt_count} blocage(s)</span>}
+                <span className={`pill-tag ${c.plan === "trial" ? "status-pending" : "status-overdue"}`}>{c.plan}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const CLAIM_STATUS_LABEL = {
+  pending_verification: "Email non confirmé",
+  a_verifier: "À vérifier",
+  verified: "Validée (en attente d'activation)",
+  rejected: "Refusée",
+  revoked: "Révoquée",
+};
+
+function ClaimsTab() {
+  const [status, setStatus] = useState("a_verifier");
+  const [claims, setClaims] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [rejecting, setRejecting] = useState(null);
+  const [note, setNote] = useState("");
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const { data } = await api.get("/admin/claims", { params: status ? { status } : {} });
+      setClaims(data);
+    } finally { setLoading(false); }
+  };
+
+  useEffect(() => { load(); }, [status]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const approve = async (id) => {
+    try {
+      await api.post(`/admin/claims/${id}/approve`);
+      toast.success("Revendication validée — email d'activation envoyé");
+      load();
+    } catch (err) { toast.error(err.response?.data?.detail || "Impossible de valider"); }
+  };
+
+  const reject = async (id) => {
+    try {
+      await api.post(`/admin/claims/${id}/reject`, { note });
+      toast.success("Revendication refusée");
+      setRejecting(null);
+      setNote("");
+      load();
+    } catch (err) { toast.error(err.response?.data?.detail || "Impossible de refuser"); }
+  };
+
+  return (
+    <div className="mt-6">
+      <Select value={status || "all"} onValueChange={(v) => setStatus(v === "all" ? "" : v)}>
+        <SelectTrigger className="h-10 w-[240px]" data-testid="claims-status-filter"><SelectValue /></SelectTrigger>
+        <SelectContent>
+          <SelectItem value="all">Tous les statuts</SelectItem>
+          <SelectItem value="a_verifier">À vérifier</SelectItem>
+          <SelectItem value="pending_verification">Email non confirmé</SelectItem>
+          <SelectItem value="verified">Validées</SelectItem>
+          <SelectItem value="rejected">Refusées</SelectItem>
+        </SelectContent>
+      </Select>
+
+      {loading && <p className="mt-6 text-sm text-slate-400">Chargement…</p>}
+
+      <div className="mt-4 space-y-3">
+        {!loading && claims.length === 0 && <p className="text-sm text-slate-500">Aucune revendication pour ce filtre.</p>}
+        {claims.map((c) => (
+          <div key={c.id} className="paper-card p-5" data-testid={`claim-${c.id}`}>
+            <div className="flex items-start justify-between flex-wrap gap-2">
+              <div>
+                <div className="font-display font-bold text-slate-900">{c.lead?.name || "Fiche supprimée"}</div>
+                <div className="text-sm text-slate-600 mt-0.5">{c.name} · {c.role} · {c.email}{c.phone ? ` · ${c.phone}` : ""}</div>
+                <div className="text-xs text-slate-400 mt-1">Soumise le {new Date(c.created_at).toLocaleDateString("fr-FR")}</div>
+              </div>
+              <span className="pill-tag status-pending">{CLAIM_STATUS_LABEL[c.status] || c.status}</span>
+            </div>
+
+            {c.status === "a_verifier" && (
+              <div className="mt-3 flex items-center gap-2">
+                <Button size="sm" className="rounded-full" onClick={() => approve(c.id)} data-testid={`claim-approve-${c.id}`}>
+                  <BadgeCheck size={14} className="mr-1.5" />Valider
+                </Button>
+                {rejecting === c.id ? (
+                  <>
+                    <input
+                      className="h-9 px-3 rounded-full border border-slate-200 text-sm flex-1 max-w-xs"
+                      placeholder="Motif du refus (optionnel)"
+                      value={note}
+                      onChange={(e) => setNote(e.target.value)}
+                      data-testid={`claim-reject-note-${c.id}`}
+                    />
+                    <Button size="sm" variant="destructive" className="rounded-full" onClick={() => reject(c.id)}>Confirmer le refus</Button>
+                    <Button size="sm" variant="ghost" className="rounded-full" onClick={() => { setRejecting(null); setNote(""); }}>Annuler</Button>
+                  </>
+                ) : (
+                  <Button size="sm" variant="outline" className="rounded-full" onClick={() => setRejecting(c.id)} data-testid={`claim-reject-${c.id}`}>
+                    <XCircle size={14} className="mr-1.5" />Refuser
+                  </Button>
+                )}
+              </div>
+            )}
+            {c.rejection_note && <p className="mt-2 text-xs text-slate-500">Motif du refus : {c.rejection_note}</p>}
+          </div>
+        ))}
       </div>
     </div>
   );

@@ -34,6 +34,9 @@ from routers import drive as drive_router
 from routers import gcal as gcal_router
 from routers import admin as admin_router
 from routers import mailbox as mailbox_router
+from routers import appointments as appointments_router
+from routers import prospection as prospection_router
+from routers import claims as claims_router
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger("clubmanager")
@@ -56,6 +59,9 @@ api.include_router(drive_router.router)
 api.include_router(gcal_router.router)
 api.include_router(admin_router.router)
 api.include_router(mailbox_router.router)
+api.include_router(appointments_router.router)
+api.include_router(prospection_router.router)
+api.include_router(claims_router.router)
 
 
 @api.get("/")
@@ -175,7 +181,20 @@ async def startup():
     await db.leads.create_index("assigned_to_user_id")
     await db.leads.create_index("do_not_call")
     await db.leads.create_index([("annuaire_visible", 1), ("sport", 1), ("city", 1)])
-    await db.leads.create_index("annuaire_slug", unique=True, sparse=True)
+    # Not a plain sparse index: every Lead document explicitly carries
+    # `annuaire_slug: null` (Pydantic always serializes the field), and a
+    # sparse index still indexes an explicit null — so a bare unique+sparse
+    # index throws a duplicate-key error on the second lead ever inserted.
+    # A partial index scoped to actual string values is correct; drop the
+    # earlier (buggy) sparse version first if a previous run created it.
+    try:
+        await db.leads.drop_index("annuaire_slug_1")
+    except Exception:
+        pass
+    await db.leads.create_index(
+        "annuaire_slug", unique=True, partialFilterExpression={"annuaire_slug": {"$type": "string"}},
+        name="annuaire_slug_unique",
+    )
     await db.leads.create_index("name_city_key")
     await db.leads.create_index("phone_key", sparse=True)
     await db.lead_activities.create_index([("lead_id", 1), ("created_at", -1)])
@@ -191,7 +210,11 @@ async def startup():
     await db.employee_availability.create_index("user_id", unique=True)
     await db.claim_requests.create_index("lead_id")
     await db.claim_requests.create_index("email")
+    await db.claim_requests.create_index("status")
     await db.claim_requests.create_index("created_at")
+    await db.booking_links.create_index("id", unique=True)
+    await db.booking_links.create_index("lead_id")
+    await db.booking_links.create_index("expires_at")
 
     await _seed_admin(db)
     await _backfill_referral_codes(db)

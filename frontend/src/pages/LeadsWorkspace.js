@@ -4,10 +4,9 @@ import { useAuth } from "@/lib/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Phone, Search, Upload, Mail, Send, ChevronLeft, ChevronRight, UserCircle2, Users as UsersIcon, Sparkles, Trash2, Flame, ShieldOff } from "lucide-react";
+import { Phone, Search, Upload, Mail, Send, ChevronLeft, ChevronRight, UserCircle2, Users as UsersIcon, Sparkles, Trash2, Flame, ShieldOff, Clock, Pencil, X, Check, CalendarPlus } from "lucide-react";
 import { toast } from "sonner";
 
 const STATUS_LABEL = {
@@ -28,7 +27,20 @@ const CURRENT_TOOL_LABEL = { excel: "Excel", whatsapp: "WhatsApp", helloasso: "H
 const DECISION_MAKER_LABEL = { president: "Président(e)", tresorier: "Trésorier(ère)", secretaire: "Secrétaire", autre: "Autre" };
 const INTEREST_LABEL = { froid: "Froid", tiede: "Tiède", chaud: "Chaud" };
 const HORIZON_LABEL = { maintenant: "Maintenant", avant_saison: "Avant la nouvelle saison", plus_tard: "Plus tard" };
+const NOTE_TYPE_LABEL = { appel: "Appel", email: "Email", visite: "Visite", interne: "Interne" };
+const CALL_OUTCOME_LABEL = { no_answer: "Pas de réponse", voicemail: "Messagerie", reached: "Contact joint", callback: "Rappel programmé", refus: "Refus", interesse: "Intéressé" };
+const APPOINTMENT_TYPE_LABEL = {
+  appel_decouverte: "Appel découverte", demo_visio: "Démo visio",
+  installation_distance: "Installation à distance", installation_sur_place: "Installation sur place",
+};
+const WEEKDAY_LABEL = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"];
 const PAGE_SIZE = 30;
+
+function fmtDateTime(iso) {
+  if (!iso) return "";
+  try { return new Date(iso).toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", year: "2-digit", hour: "2-digit", minute: "2-digit" }); }
+  catch { return iso; }
+}
 
 export default function LeadsWorkspace() {
   const { user } = useAuth() || {};
@@ -43,6 +55,16 @@ export default function LeadsWorkspace() {
   const fileInputRef = useRef(null);
   const [importing, setImporting] = useState(false);
   const [selected, setSelected] = useState(new Set());
+  const [callbacks, setCallbacks] = useState({ overdue: [], today: [] });
+
+  const loadCallbacks = async () => {
+    try {
+      const { data } = await api.get("/admin/leads/callbacks");
+      setCallbacks(data);
+    } catch { /* non-blocking */ }
+  };
+
+  useEffect(() => { loadCallbacks(); }, []);
 
   const load = async (opts = {}) => {
     const { data } = await api.get("/admin/leads", {
@@ -146,20 +168,40 @@ export default function LeadsWorkspace() {
             <UserCircle2 size={16} />Connecté en tant que <b>{user?.name}</b>
           </p>
         </div>
-        {user?.is_platform_admin && (
-          <div className="flex rounded-full border border-slate-200 p-1 bg-white">
-            <button onClick={() => setTab("queue")} className={`h-9 px-3 rounded-full text-sm font-medium transition ${tab === "queue" ? "text-white" : "text-slate-600"}`} style={tab === "queue" ? {background:"var(--club-primary)"} : {}} data-testid="leads-tab-queue">File d'appel</button>
+        <div className="flex rounded-full border border-slate-200 p-1 bg-white">
+          <button onClick={() => setTab("queue")} className={`h-9 px-3 rounded-full text-sm font-medium transition ${tab === "queue" ? "text-white" : "text-slate-600"}`} style={tab === "queue" ? {background:"var(--club-primary)"} : {}} data-testid="leads-tab-queue">File d'appel</button>
+          <button onClick={() => setTab("agenda")} className={`h-9 px-3 rounded-full text-sm font-medium transition ${tab === "agenda" ? "text-white" : "text-slate-600"}`} style={tab === "agenda" ? {background:"var(--club-primary)"} : {}} data-testid="leads-tab-agenda">Mon agenda</button>
+          {user?.is_platform_admin && (
             <button onClick={() => setTab("admin")} className={`h-9 px-3 rounded-full text-sm font-medium transition ${tab === "admin" ? "text-white" : "text-slate-600"}`} style={tab === "admin" ? {background:"var(--club-primary)"} : {}} data-testid="leads-tab-admin">Import & équipe</button>
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
       {tab === "admin" && user?.is_platform_admin && (
         <AdminPanel fileInputRef={fileInputRef} onImport={onImport} importing={importing} />
       )}
 
+      {tab === "agenda" && <AgendaPanel user={user} />}
+
       {tab === "queue" && (
         <>
+          {(callbacks.overdue.length > 0 || callbacks.today.length > 0) && (
+            <div className="mt-6 paper-card p-4 border-l-4" style={{ borderLeftColor: callbacks.overdue.length ? "#DC2626" : "var(--club-primary)" }} data-testid="leads-callback-banner">
+              <div className="flex items-center gap-2 font-medium text-slate-900">
+                <Clock size={16} />
+                Rappels du jour ({callbacks.overdue.length + callbacks.today.length})
+                {callbacks.overdue.length > 0 && <span className="pill-tag status-overdue">{callbacks.overdue.length} en retard</span>}
+              </div>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {[...callbacks.overdue, ...callbacks.today].slice(0, 8).map((l) => (
+                  <button key={l.id} onClick={() => setDetail(l)} className="pill-tag status-pending" data-testid={`leads-callback-${l.id}`}>
+                    {l.name} · {fmtDateTime(l.callback_at)}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Status counters */}
           <div className="mt-6 grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-5 gap-3">
             {["nouveau", "a_appeler", "contacte", "interesse", "rdv_planifie"].map((s) => (
@@ -297,7 +339,7 @@ export default function LeadsWorkspace() {
         </>
       )}
 
-      <LeadDetailDialog lead={detail} onOpenChange={(v) => !v && setDetail(null)} onSaved={() => { setDetail(null); load(); }} />
+      <LeadDetailDialog lead={detail} onOpenChange={(v) => !v && setDetail(null)} onSaved={() => { setDetail(null); load(); loadCallbacks(); }} onActivityLogged={loadCallbacks} />
     </div>
   );
 }
@@ -370,7 +412,8 @@ function AdminPanel({ fileInputRef, onImport, importing }) {
   );
 }
 
-function LeadDetailDialog({ lead, onOpenChange, onSaved }) {
+function LeadDetailDialog({ lead, onOpenChange, onSaved, onActivityLogged }) {
+  const { user } = useAuth() || {};
   const [form, setForm] = useState({});
   const [saving, setSaving] = useState(false);
   useEffect(() => { setForm(lead || {}); }, [lead]);
@@ -468,11 +511,13 @@ function LeadDetailDialog({ lead, onOpenChange, onSaved }) {
           </div>
         </div>
 
-        <div>
-          <Label>Notes d'appel</Label>
-          <Textarea rows={4} value={form.notes || ""} onChange={(e) => setForm({ ...form, notes: e.target.value })} className="mt-1" placeholder="Ce qui a été dit, à rappeler, objections…" data-testid="lead-notes" />
-        </div>
         {lead.website && <a href={lead.website.startsWith("http") ? lead.website : `https://${lead.website}`} target="_blank" rel="noreferrer" className="text-sm text-orange-600 underline">Voir le site web</a>}
+
+        <AnnuairePanel lead={form} isAdmin={!!user?.is_platform_admin} onChanged={(updated) => setForm(updated)} />
+
+        <BookingLinkPanel leadId={lead.id} />
+
+        <LeadActivityPanel leadId={lead.id} currentUserId={user?.id} isAdmin={!!user?.is_platform_admin} onActivity={onActivityLogged} />
 
         <label className="flex items-center gap-2 text-sm text-slate-600 border-t border-slate-100 pt-3">
           <input type="checkbox" checked={!!form.do_not_call} onChange={(e) => setForm({ ...form, do_not_call: e.target.checked })} data-testid="lead-do-not-call" />
@@ -487,5 +532,342 @@ function LeadDetailDialog({ lead, onOpenChange, onSaved }) {
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function LeadActivityPanel({ leadId, currentUserId, isAdmin, onActivity }) {
+  const [activities, setActivities] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [noteType, setNoteType] = useState("appel");
+  const [noteText, setNoteText] = useState("");
+  const [callOutcome, setCallOutcome] = useState("");
+  const [callDuration, setCallDuration] = useState("");
+  const [callNote, setCallNote] = useState("");
+  const [callbackAt, setCallbackAt] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [editingId, setEditingId] = useState(null);
+  const [editText, setEditText] = useState("");
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const { data } = await api.get(`/admin/leads/${leadId}/activities`);
+      setActivities(data);
+    } catch { /* ignore */ }
+    finally { setLoading(false); }
+  };
+
+  useEffect(() => { if (leadId) load(); }, [leadId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const addNote = async () => {
+    if (!noteText.trim()) return;
+    setBusy(true);
+    try {
+      await api.post(`/admin/leads/${leadId}/activities`, { type: "note", note_type: noteType, text: noteText.trim() });
+      setNoteText("");
+      load();
+    } catch (err) { toast.error(err.response?.data?.detail || "Impossible d'ajouter la note"); }
+    finally { setBusy(false); }
+  };
+
+  const logCall = async () => {
+    if (!callOutcome) { toast.error("Choisissez un résultat d'appel"); return; }
+    if (callOutcome === "callback" && !callbackAt) { toast.error("Une date de rappel est requise"); return; }
+    setBusy(true);
+    try {
+      await api.post(`/admin/leads/${leadId}/activities`, {
+        type: "call", call_outcome: callOutcome,
+        call_duration_seconds: callDuration ? Number(callDuration) * 60 : null,
+        text: callNote.trim(),
+        callback_at: callOutcome === "callback" ? new Date(callbackAt).toISOString() : null,
+      });
+      toast.success("Appel enregistré");
+      setCallOutcome(""); setCallDuration(""); setCallNote(""); setCallbackAt("");
+      load();
+      onActivity && onActivity();
+    } catch (err) { toast.error(err.response?.data?.detail || "Impossible d'enregistrer l'appel"); }
+    finally { setBusy(false); }
+  };
+
+  const saveEdit = async (id) => {
+    if (!editText.trim()) return;
+    try {
+      await api.put(`/admin/leads/${leadId}/activities/${id}`, { text: editText.trim() });
+      setEditingId(null);
+      load();
+    } catch (err) { toast.error(err.response?.data?.detail || "Impossible de modifier"); }
+  };
+
+  const removeActivity = async (id) => {
+    if (!window.confirm("Supprimer cette note ?")) return;
+    try {
+      await api.delete(`/admin/leads/${leadId}/activities/${id}`);
+      load();
+    } catch (err) { toast.error(err.response?.data?.detail || "Impossible de supprimer"); }
+  };
+
+  const renderActivity = (a) => {
+    if (a.type === "status_change") {
+      return <span>Statut : <b>{STATUS_LABEL[a.from_status] || a.from_status || "—"}</b> → <b>{STATUS_LABEL[a.to_status] || a.to_status}</b></span>;
+    }
+    if (a.type === "call") {
+      return (
+        <span>
+          Appel — <b>{CALL_OUTCOME_LABEL[a.call_outcome] || a.call_outcome}</b>
+          {a.call_duration_seconds ? ` (${Math.round(a.call_duration_seconds / 60)} min)` : ""}
+          {a.callback_at ? ` · rappel prévu le ${fmtDateTime(a.callback_at)}` : ""}
+          {a.text ? <div className="text-slate-600 mt-0.5">{a.text}</div> : null}
+        </span>
+      );
+    }
+    if (a.type === "email") {
+      return <span>{a.text || "Email envoyé"}</span>;
+    }
+    // note
+    return <span>[{NOTE_TYPE_LABEL[a.note_type] || a.note_type}] {a.text}</span>;
+  };
+
+  return (
+    <div className="border-t border-slate-100 pt-3 space-y-4">
+      <div>
+        <Label className="text-xs uppercase text-slate-400">Enregistrer un appel</Label>
+        <div className="mt-2 grid grid-cols-2 gap-2">
+          <Select value={callOutcome} onValueChange={setCallOutcome}>
+            <SelectTrigger className="h-10" data-testid="lead-call-outcome"><SelectValue placeholder="Résultat…" /></SelectTrigger>
+            <SelectContent>{Object.entries(CALL_OUTCOME_LABEL).map(([v, l]) => <SelectItem key={v} value={v}>{l}</SelectItem>)}</SelectContent>
+          </Select>
+          <Input type="number" placeholder="Durée (min)" value={callDuration} onChange={(e) => setCallDuration(e.target.value)} className="h-10" data-testid="lead-call-duration" />
+          {callOutcome === "callback" && (
+            <Input type="datetime-local" value={callbackAt} onChange={(e) => setCallbackAt(e.target.value)} className="h-10 col-span-2" data-testid="lead-callback-at" />
+          )}
+          <Input placeholder="Note rapide (optionnel)" value={callNote} onChange={(e) => setCallNote(e.target.value)} className="h-10 col-span-2" data-testid="lead-call-note" />
+        </div>
+        <Button size="sm" className="mt-2 rounded-full" onClick={logCall} disabled={busy} style={{ background: "var(--club-primary)" }} data-testid="lead-log-call-btn">
+          <Phone size={14} className="mr-1.5" />Enregistrer l'appel
+        </Button>
+      </div>
+
+      <div>
+        <Label className="text-xs uppercase text-slate-400">Ajouter une note</Label>
+        <div className="mt-2 flex gap-2">
+          <Select value={noteType} onValueChange={setNoteType}>
+            <SelectTrigger className="h-10 w-32 shrink-0" data-testid="lead-note-type"><SelectValue /></SelectTrigger>
+            <SelectContent>{Object.entries(NOTE_TYPE_LABEL).map(([v, l]) => <SelectItem key={v} value={v}>{l}</SelectItem>)}</SelectContent>
+          </Select>
+          <Input placeholder="Nouvelle note…" value={noteText} onChange={(e) => setNoteText(e.target.value)} className="h-10" data-testid="lead-note-text" />
+        </div>
+        <Button size="sm" variant="outline" className="mt-2 rounded-full" onClick={addNote} disabled={busy}>Ajouter la note</Button>
+      </div>
+
+      <div>
+        <Label className="text-xs uppercase text-slate-400">Historique</Label>
+        {loading && <p className="text-sm text-slate-400 mt-2">Chargement…</p>}
+        {!loading && activities.length === 0 && <p className="text-sm text-slate-400 mt-2">Aucune activité pour le moment.</p>}
+        <div className="mt-2 space-y-2 max-h-56 overflow-y-auto">
+          {activities.map((a) => {
+            const canEdit = a.type === "note" && (a.author_id === currentUserId || isAdmin);
+            return (
+              <div key={a.id} className="text-sm bg-slate-50 rounded-lg p-2.5" data-testid={`lead-activity-${a.id}`}>
+                {editingId === a.id ? (
+                  <div className="flex gap-2 items-center">
+                    <Input value={editText} onChange={(e) => setEditText(e.target.value)} className="h-9" />
+                    <button onClick={() => saveEdit(a.id)} className="text-green-600"><Check size={16} /></button>
+                    <button onClick={() => setEditingId(null)} className="text-slate-400"><X size={16} /></button>
+                  </div>
+                ) : (
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex-1">{renderActivity(a)}</div>
+                    {canEdit && (
+                      <div className="flex gap-1.5 shrink-0">
+                        <button onClick={() => { setEditingId(a.id); setEditText(a.text || ""); }} className="text-slate-400 hover:text-slate-700" data-testid={`lead-activity-edit-${a.id}`}><Pencil size={14} /></button>
+                        <button onClick={() => removeActivity(a.id)} className="text-slate-400 hover:text-red-600" data-testid={`lead-activity-delete-${a.id}`}><Trash2 size={14} /></button>
+                      </div>
+                    )}
+                  </div>
+                )}
+                <div className="text-xs text-slate-400 mt-1">{a.author_name} · {fmtDateTime(a.created_at)}</div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const CLAIM_STATUS_BADGE = {
+  none: null,
+  a_verifier: { label: "Revendication à vérifier", cls: "status-pending" },
+  revendique: { label: "Fiche revendiquée", cls: "status-paid" },
+};
+
+function AnnuairePanel({ lead, isAdmin, onChanged }) {
+  const [busy, setBusy] = useState(false);
+  const visible = !!lead.annuaire_visible;
+  const publicUrl = lead.annuaire_slug ? `${window.location.origin}/annuaire/${lead.annuaire_slug}` : "";
+  const badge = CLAIM_STATUS_BADGE[lead.claim_status];
+
+  const toggle = async () => {
+    setBusy(true);
+    try {
+      const { data } = await api.put(`/admin/leads/${lead.id}/annuaire`, { visible: !visible });
+      onChanged(data);
+      toast.success(data.annuaire_visible ? "Fiche publiée sur l'annuaire" : "Fiche retirée de l'annuaire");
+    } catch (err) { toast.error(err.response?.data?.detail || "Impossible de mettre à jour"); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <div className="border-t border-slate-100 pt-3">
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <Label className="text-xs uppercase text-slate-400">Annuaire public</Label>
+        {badge && <span className={`pill-tag ${badge.cls}`}>{badge.label}</span>}
+      </div>
+      <div className="mt-2 flex items-center gap-3 flex-wrap">
+        {isAdmin ? (
+          <Button size="sm" variant="outline" className="rounded-full" onClick={toggle} disabled={busy} data-testid="lead-annuaire-toggle">
+            {visible ? "Retirer de l'annuaire" : "Publier sur l'annuaire"}
+          </Button>
+        ) : (
+          <span className="text-sm text-slate-500">{visible ? "Visible sur l'annuaire" : "Non publiée"}</span>
+        )}
+        {publicUrl && visible && (
+          <a href={publicUrl} target="_blank" rel="noreferrer" className="text-sm text-orange-600 underline break-all">{publicUrl}</a>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function BookingLinkPanel({ leadId }) {
+  const [type, setType] = useState("appel_decouverte");
+  const [busy, setBusy] = useState(false);
+  const [lastUrl, setLastUrl] = useState("");
+
+  const sendLink = async () => {
+    setBusy(true);
+    try {
+      const { data } = await api.post(`/admin/leads/${leadId}/booking-link`, { appointment_type: type });
+      setLastUrl(data.booking_url);
+      toast.success("Lien de réservation envoyé au prospect par email");
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Impossible de créer le lien de réservation");
+    } finally { setBusy(false); }
+  };
+
+  return (
+    <div className="border-t border-slate-100 pt-3">
+      <Label className="text-xs uppercase text-slate-400">Prendre rendez-vous</Label>
+      <div className="mt-2 flex gap-2">
+        <Select value={type} onValueChange={setType}>
+          <SelectTrigger className="h-10 flex-1" data-testid="booking-link-type"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            {Object.entries(APPOINTMENT_TYPE_LABEL).map(([v, l]) => <SelectItem key={v} value={v}>{l}</SelectItem>)}
+          </SelectContent>
+        </Select>
+        <Button variant="outline" className="rounded-full shrink-0" onClick={sendLink} disabled={busy} data-testid="booking-link-send-btn">
+          <CalendarPlus size={14} className="mr-1.5" />Envoyer le lien
+        </Button>
+      </div>
+      {lastUrl && <p className="mt-2 text-xs text-slate-400 break-all">Lien envoyé : {lastUrl}</p>}
+    </div>
+  );
+}
+
+function AgendaPanel({ user }) {
+  const [appointments, setAppointments] = useState([]);
+  const [availability, setAvailability] = useState({ slots: [] });
+  const [savingAvail, setSavingAvail] = useState(false);
+
+  const load = async () => {
+    const { data } = await api.get("/admin/appointments");
+    setAppointments(data);
+  };
+  const loadAvailability = async () => {
+    const { data } = await api.get("/admin/availability");
+    setAvailability(data);
+  };
+  useEffect(() => { load(); loadAvailability(); }, []);
+
+  const addSlot = () => {
+    setAvailability((prev) => ({ ...prev, slots: [...prev.slots, { type: "appel_decouverte", weekday: 0, start_time: "09:00", end_time: "12:00" }] }));
+  };
+  const updateSlot = (i, field, value) => {
+    setAvailability((prev) => ({ ...prev, slots: prev.slots.map((s, idx) => (idx === i ? { ...s, [field]: value } : s)) }));
+  };
+  const removeSlot = (i) => {
+    setAvailability((prev) => ({ ...prev, slots: prev.slots.filter((_, idx) => idx !== i) }));
+  };
+  const saveAvailability = async () => {
+    setSavingAvail(true);
+    try {
+      await api.put("/admin/availability", { slots: availability.slots });
+      toast.success("Disponibilités enregistrées");
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Impossible d'enregistrer");
+    } finally { setSavingAvail(false); }
+  };
+
+  const cancelAppointment = async (id) => {
+    if (!window.confirm("Annuler ce rendez-vous ?")) return;
+    try {
+      await api.delete(`/admin/appointments/${id}`);
+      toast.success("Rendez-vous annulé");
+      load();
+    } catch { toast.error("Impossible d'annuler"); }
+  };
+
+  const upcoming = appointments.filter((a) => a.status !== "annule");
+
+  return (
+    <div className="mt-6 space-y-6">
+      <div className="paper-card p-6">
+        <h3 className="font-display font-semibold text-lg text-slate-900">Mes rendez-vous</h3>
+        <div className="mt-3 space-y-2">
+          {upcoming.length === 0 && <p className="text-sm text-slate-400">Aucun rendez-vous programmé.</p>}
+          {upcoming.map((a) => (
+            <div key={a.id} className="flex items-center justify-between gap-3 p-3 rounded-xl bg-slate-50" data-testid={`agenda-appointment-${a.id}`}>
+              <div>
+                <div className="font-medium text-slate-900">{APPOINTMENT_TYPE_LABEL[a.type] || a.type}</div>
+                <div className="text-sm text-slate-500">{fmtDateTime(a.start_at)} · {a.duration_minutes} min{a.assigned_to_name ? ` · ${a.assigned_to_name}` : ""}</div>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="pill-tag status-pending">{a.status}</span>
+                <button onClick={() => cancelAppointment(a.id)} className="text-slate-400 hover:text-red-600 p-1" data-testid={`agenda-cancel-${a.id}`}><Trash2 size={16} /></button>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="paper-card p-6">
+        <h3 className="font-display font-semibold text-lg text-slate-900">Mes disponibilités hebdomadaires</h3>
+        <p className="text-sm text-slate-600 mt-1">Les créneaux proposés au prospect (sur la page de réservation ou dans la CRM) sont calculés à partir de ces plages récurrentes.</p>
+        <div className="mt-3 space-y-2">
+          {availability.slots.map((s, i) => (
+            <div key={i} className="flex flex-wrap items-center gap-2" data-testid={`availability-slot-${i}`}>
+              <Select value={s.type} onValueChange={(v) => updateSlot(i, "type", v)}>
+                <SelectTrigger className="h-10 w-44"><SelectValue /></SelectTrigger>
+                <SelectContent>{Object.entries(APPOINTMENT_TYPE_LABEL).map(([v, l]) => <SelectItem key={v} value={v}>{l}</SelectItem>)}</SelectContent>
+              </Select>
+              <Select value={String(s.weekday)} onValueChange={(v) => updateSlot(i, "weekday", Number(v))}>
+                <SelectTrigger className="h-10 w-32"><SelectValue /></SelectTrigger>
+                <SelectContent>{WEEKDAY_LABEL.map((l, v) => <SelectItem key={v} value={String(v)}>{l}</SelectItem>)}</SelectContent>
+              </Select>
+              <Input type="time" value={s.start_time} onChange={(e) => updateSlot(i, "start_time", e.target.value)} className="h-10 w-28" />
+              <span className="text-slate-400">→</span>
+              <Input type="time" value={s.end_time} onChange={(e) => updateSlot(i, "end_time", e.target.value)} className="h-10 w-28" />
+              <button onClick={() => removeSlot(i)} className="text-slate-400 hover:text-red-600 p-1"><Trash2 size={16} /></button>
+            </div>
+          ))}
+        </div>
+        <div className="mt-4 flex gap-2">
+          <Button variant="outline" className="rounded-full" onClick={addSlot} data-testid="availability-add-slot-btn">+ Ajouter un créneau</Button>
+          <Button className="rounded-full" style={{ background: "var(--club-primary)" }} onClick={saveAvailability} disabled={savingAvail} data-testid="availability-save-btn">
+            {savingAvail ? "Enregistrement…" : "Enregistrer"}
+          </Button>
+        </div>
+      </div>
+    </div>
   );
 }

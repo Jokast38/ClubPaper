@@ -29,6 +29,7 @@ export default function Landing() {
           </Link>
           <div className="flex items-center gap-2">
             <Link to="/tarifs" className="text-sm font-medium text-slate-700 hover:text-slate-900 px-3 py-2" data-testid="nav-pricing">Tarifs</Link>
+            <Link to="/annuaire" className="text-sm font-medium text-slate-700 hover:text-slate-900 px-3 py-2" data-testid="nav-annuaire">Annuaire des clubs</Link>
             <Link to="/login" className="text-sm font-medium text-slate-700 hover:text-slate-900 px-3 py-2" data-testid="nav-login">Se connecter</Link>
             <Link to="/inscription" data-testid="nav-register">
               <Button className="rounded-full h-11 px-5 bg-orange-600 hover:bg-orange-700">Créer mon club</Button>
@@ -161,6 +162,7 @@ export default function Landing() {
             <div className="font-semibold text-slate-800 mb-3">Produit</div>
             <ul className="space-y-2">
               <li><Link to="/tarifs" className="hover:text-slate-800">Tarifs</Link></li>
+              <li><Link to="/annuaire" className="hover:text-slate-800">Annuaire des clubs</Link></li>
               <li><a href="#faq" className="hover:text-slate-800">FAQ</a></li>
               <li><Link to="/inscription" className="hover:text-slate-800">Créer mon club</Link></li>
             </ul>

@@ -4,6 +4,7 @@ import ssl
 import smtplib
 import asyncio
 import logging
+from datetime import datetime
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.application import MIMEApplication
@@ -31,12 +32,21 @@ def _smtp_config():
     }
 
 
-def _send_via_smtp_sync(cfg: dict, to: str, subject: str, html: str, sender: str):
-    msg = MIMEMultipart("alternative")
+def _send_via_smtp_sync(cfg: dict, to: str, subject: str, html: str, sender: str, attachments: list = None):
+    msg = MIMEMultipart("mixed") if attachments else MIMEMultipart("alternative")
     msg["Subject"] = subject
     msg["From"] = sender
     msg["To"] = to
-    msg.attach(MIMEText(html, "html"))
+    if attachments:
+        alt = MIMEMultipart("alternative")
+        alt.attach(MIMEText(html, "html"))
+        msg.attach(alt)
+        for filename, content_type, data in attachments:
+            part = MIMEApplication(data, Name=filename)
+            part["Content-Disposition"] = f'attachment; filename="{filename}"'
+            msg.attach(part)
+    else:
+        msg.attach(MIMEText(html, "html"))
 
     context = ssl.create_default_context()
     if cfg["port"] == 465:
@@ -99,7 +109,8 @@ def _configure_resend():
     return api_key
 
 
-async def send_email(to: str, subject: str, html: str, *, club_id: str = "", kind: str = ""):
+async def send_email(to: str, subject: str, html: str, *, club_id: str = "", kind: str = "", attachments: list = None):
+    """`attachments`: optional list of (filename, content_type, bytes) — e.g. an .ics invite."""
     sender = _sender()
     if not to:
         await log_notification(channel="email", status="skipped", to="", subject=subject, club_id=club_id, kind=kind, error="no address")
@@ -108,7 +119,7 @@ async def send_email(to: str, subject: str, html: str, *, club_id: str = "", kin
     smtp_cfg = _smtp_config()
     if smtp_cfg and smtp_cfg["password"]:
         try:
-            await asyncio.to_thread(_send_via_smtp_sync, smtp_cfg, to, subject, html, sender)
+            await asyncio.to_thread(_send_via_smtp_sync, smtp_cfg, to, subject, html, sender, attachments)
             await log_notification(channel="email", status="sent", to=to, subject=subject, club_id=club_id, kind=kind, provider_id="")
             return {"status": "sent", "to": to}
         except Exception as e:
@@ -122,6 +133,8 @@ async def send_email(to: str, subject: str, html: str, *, club_id: str = "", kin
         await log_notification(channel="email", status="simulated", to=to, subject=subject, club_id=club_id, kind=kind)
         return {"status": "simulated", "to": to, "subject": subject}
     params = {"from": sender, "to": [to], "subject": subject, "html": html}
+    if attachments:
+        params["attachments"] = [{"filename": fn, "content": list(data)} for fn, _ct, data in attachments]
     try:
         result = await asyncio.to_thread(resend.Emails.send, params)
         await log_notification(channel="email", status="sent", to=to, subject=subject, club_id=club_id, kind=kind, provider_id=result.get("id") or "")
@@ -305,6 +318,148 @@ def lead_campaign_html(lead_name: str, landing_url: str, sender_name: str = "", 
   <p>Des questions ? Répondez simplement à cet email, je me ferai un plaisir d'y répondre.</p>
   {signature}
   {unsubscribe}
+</div>
+"""
+
+
+def callback_summary_html(employee_name: str, overdue: list, today: list) -> str:
+    """Daily morning summary of a sales employee's callback queue (Partie B)."""
+    def _row(l, overdue_flag):
+        color = "#DC2626" if overdue_flag else "#0f172a"
+        when = l.get("callback_at", "")
+        try:
+            when = datetime.fromisoformat(when.replace("Z", "+00:00")).strftime("%d/%m %H:%M")
+        except Exception:
+            pass
+        return f'<tr><td style="padding:8px;border-bottom:1px solid #E2E8F0;color:{color};">{l.get("name","")}</td><td style="padding:8px;border-bottom:1px solid #E2E8F0;color:{color};">{l.get("city","")}</td><td style="padding:8px;border-bottom:1px solid #E2E8F0;color:{color};">{when}</td></tr>'
+
+    rows = "".join(_row(l, True) for l in overdue) + "".join(_row(l, False) for l in today)
+    count = len(overdue) + len(today)
+    if count == 0:
+        body = "<p>Aucun rappel programmé aujourd'hui. Bonne journée !</p>"
+    else:
+        body = f"""
+        <p>Vous avez <b>{count}</b> rappel(s) à faire aujourd'hui{f", dont {len(overdue)} en retard" if overdue else ""} :</p>
+        <table style="width:100%;border-collapse:collapse;margin-top:12px;">
+          <tr><th style="text-align:left;padding:8px;color:#64748b;font-size:13px;">Club</th><th style="text-align:left;padding:8px;color:#64748b;font-size:13px;">Ville</th><th style="text-align:left;padding:8px;color:#64748b;font-size:13px;">Rappel prévu</th></tr>
+          {rows}
+        </table>
+        """
+    return f"""
+<div style="font-family: -apple-system, sans-serif; max-width: 580px; margin: 0 auto; padding: 24px; color: #0f172a;">
+  <h2 style="color: #ea580c; margin: 0 0 16px;">Bonjour {employee_name},</h2>
+  {body}
+  <p style="color: #64748b; font-size: 14px; margin-top:24px;">L'équipe ClubPaper</p>
+</div>
+"""
+
+
+APPOINTMENT_TYPE_LABEL = {
+    "appel_decouverte": "Appel découverte", "demo_visio": "Démo visio",
+    "installation_distance": "Installation à distance", "installation_sur_place": "Installation sur place",
+}
+
+
+def _fmt_appointment_when(start_at) -> str:
+    if isinstance(start_at, str):
+        start_at = datetime.fromisoformat(start_at.replace("Z", "+00:00"))
+    return start_at.strftime("%d/%m/%Y à %H:%M") + " (heure de Paris)"
+
+
+def appointment_confirmation_html(appointment: dict, recipient_label: str) -> str:
+    type_label = APPOINTMENT_TYPE_LABEL.get(appointment.get("type"), appointment.get("type"))
+    where = appointment.get("video_link") or appointment.get("location") or ""
+    return f"""
+<div style="font-family: -apple-system, sans-serif; max-width: 560px; margin: 0 auto; padding: 24px; color: #0f172a;">
+  <h2 style="color: #ea580c; margin: 0 0 12px;">Rendez-vous confirmé</h2>
+  <p>Bonjour {recipient_label},</p>
+  <p>Votre rendez-vous <b>{type_label}</b> est confirmé pour le <b>{_fmt_appointment_when(appointment["start_at"])}</b>.</p>
+  {f'<p>{"Lien visio" if appointment.get("video_link") else "Lieu"} : {where}</p>' if where else ""}
+  <p>Un fichier .ics est joint pour l'ajouter à votre agenda.</p>
+  <p style="color: #64748b; font-size: 14px; margin-top:24px;">L'équipe ClubPaper</p>
+</div>
+"""
+
+
+def appointment_cancelled_html(appointment: dict, recipient_label: str) -> str:
+    type_label = APPOINTMENT_TYPE_LABEL.get(appointment.get("type"), appointment.get("type"))
+    return f"""
+<div style="font-family: -apple-system, sans-serif; max-width: 560px; margin: 0 auto; padding: 24px; color: #0f172a;">
+  <h2 style="color: #ea580c; margin: 0 0 12px;">Rendez-vous annulé</h2>
+  <p>Bonjour {recipient_label},</p>
+  <p>Votre rendez-vous <b>{type_label}</b> prévu le {_fmt_appointment_when(appointment["start_at"])} a été annulé.</p>
+  <p style="color: #64748b; font-size: 14px; margin-top:24px;">L'équipe ClubPaper</p>
+</div>
+"""
+
+
+def appointment_reminder_html(appointment: dict, recipient_label: str, when_label: str) -> str:
+    type_label = APPOINTMENT_TYPE_LABEL.get(appointment.get("type"), appointment.get("type"))
+    return f"""
+<div style="font-family: -apple-system, sans-serif; max-width: 560px; margin: 0 auto; padding: 24px; color: #0f172a;">
+  <h2 style="color: #ea580c; margin: 0 0 12px;">Rappel — rendez-vous {when_label}</h2>
+  <p>Bonjour {recipient_label},</p>
+  <p>Petit rappel : votre rendez-vous <b>{type_label}</b> est prévu le <b>{_fmt_appointment_when(appointment["start_at"])}</b>.</p>
+  <p style="color: #64748b; font-size: 14px; margin-top:24px;">L'équipe ClubPaper</p>
+</div>
+"""
+
+
+def booking_link_html(lead_name: str, booking_url: str, type_label: str) -> str:
+    return f"""
+<div style="font-family: -apple-system, sans-serif; max-width: 560px; margin: 0 auto; padding: 24px; color: #0f172a;">
+  <h2 style="color: #ea580c; margin: 0 0 12px;">Choisissez votre créneau</h2>
+  <p>Bonjour {lead_name},</p>
+  <p>Merci pour votre intérêt pour ClubPaper. Choisissez le créneau qui vous convient pour votre <b>{type_label}</b> :</p>
+  <p style="text-align: center; margin: 28px 0;">
+    <a href="{booking_url}" style="background: #ea580c; color: white; padding: 14px 28px; text-decoration: none; border-radius: 12px; font-weight: 600;">Choisir mon créneau</a>
+  </p>
+  <p style="color: #64748b; font-size: 14px; margin-top:24px;">L'équipe ClubPaper</p>
+</div>
+"""
+
+
+def claim_verification_html(club_name: str, code: str) -> str:
+    return f"""
+<div style="font-family: -apple-system, sans-serif; max-width: 560px; margin: 0 auto; padding: 24px; color: #0f172a;">
+  <h2 style="color: #ea580c; margin: 0 0 12px;">Confirmez votre revendication</h2>
+  <p>Vous avez demandé à revendiquer la fiche <b>{club_name}</b> sur l'annuaire ClubPaper.</p>
+  <p>Pour confirmer que vous représentez bien ce club, saisissez ce code sur la page de revendication :</p>
+  <p style="text-align: center; margin: 28px 0; font-size: 32px; font-weight: 700; letter-spacing: 6px; color: #ea580c;">{code}</p>
+  <p style="color: #64748b; font-size: 14px;">Ce code expire dans 30 minutes. Si vous n'êtes pas à l'origine de cette demande, ignorez cet email.</p>
+</div>
+"""
+
+
+def claim_submitted_admin_html(club_name: str, claimant_name: str, claimant_role: str, claimant_email: str) -> str:
+    return f"""
+<div style="font-family: -apple-system, sans-serif; max-width: 560px; margin: 0 auto; padding: 24px; color: #0f172a;">
+  <h2 style="color: #ea580c; margin: 0 0 12px;">Revendication à vérifier — {club_name}</h2>
+  <p><b>{claimant_name}</b> ({claimant_role}) a confirmé son email ({claimant_email}) et demande à revendiquer la fiche <b>{club_name}</b>.</p>
+  <p style="color: #64748b; font-size: 14px;">Vérifiez son identité puis validez ou refusez depuis l'espace commercial ClubPaper.</p>
+</div>
+"""
+
+
+def claim_approved_html(club_name: str, activation_url: str) -> str:
+    return f"""
+<div style="font-family: -apple-system, sans-serif; max-width: 560px; margin: 0 auto; padding: 24px; color: #0f172a;">
+  <h2 style="color: #ea580c; margin: 0 0 12px;">Votre revendication est validée 🎉</h2>
+  <p>Votre demande pour <b>{club_name}</b> a été vérifiée par notre équipe. Créez votre mot de passe pour activer votre compte et démarrer votre essai gratuit :</p>
+  <p style="text-align: center; margin: 28px 0;">
+    <a href="{activation_url}" style="background: #ea580c; color: white; padding: 14px 28px; text-decoration: none; border-radius: 12px; font-weight: 600;">Activer mon compte</a>
+  </p>
+  <p style="color: #64748b; font-size: 14px;">L'équipe ClubPaper</p>
+</div>
+"""
+
+
+def claim_rejected_html(club_name: str, note: str) -> str:
+    return f"""
+<div style="font-family: -apple-system, sans-serif; max-width: 560px; margin: 0 auto; padding: 24px; color: #0f172a;">
+  <h2 style="color: #ea580c; margin: 0 0 12px;">Votre revendication n'a pas été validée</h2>
+  <p>Nous n'avons pas pu valider votre demande pour <b>{club_name}</b>.{f" {note}" if note else ""}</p>
+  <p style="color: #64748b; font-size: 14px;">Si vous pensez qu'il s'agit d'une erreur, répondez à cet email.</p>
 </div>
 """
 

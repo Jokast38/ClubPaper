@@ -27,6 +27,10 @@ import LegalPage from "@/pages/LegalPage";
 import AdminDashboard from "@/pages/AdminDashboard";
 import LeadsWorkspace from "@/pages/LeadsWorkspace";
 import Mailbox from "@/pages/Mailbox";
+import BookAppointment from "@/pages/BookAppointment";
+import Annuaire from "@/pages/Annuaire";
+import AnnuaireClub from "@/pages/AnnuaireClub";
+import ClaimActivate from "@/pages/ClaimActivate";
 import AppShell from "@/components/AppShell";
 import OnboardingTour from "@/components/OnboardingTour";
 
@@ -101,6 +105,10 @@ function App() {
           <Route path="/c/:slug" element={<PublicClub />} />
           <Route path="/c/:slug/blog/:postSlug" element={<BlogPost />} />
           <Route path="/pay/:feeId" element={<PayFee />} />
+          <Route path="/rdv/:token" element={<BookAppointment />} />
+          <Route path="/annuaire" element={<Annuaire />} />
+          <Route path="/annuaire/:slug" element={<AnnuaireClub />} />
+          <Route path="/revendication/activer/:claimId" element={<ClaimActivate />} />
           <Route path="/payment/success" element={<PaymentSuccess />} />
           <Route path="/payment/cancel" element={<PaymentCancel />} />
           <Route path="*" element={<Navigate to="/" replace />} />

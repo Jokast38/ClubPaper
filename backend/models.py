@@ -490,6 +490,7 @@ class AppointmentCreate(BaseModel):
     location: Optional[str] = ""  # for installation_sur_place
     video_link: Optional[str] = ""  # for demo_visio
     note: Optional[str] = ""
+    prospect_note: Optional[str] = ""  # free-text availability the prospect gave for an on-site install
 
 
 class Appointment(BaseModel):
@@ -506,6 +507,7 @@ class Appointment(BaseModel):
     video_link: str = ""
     status: str = "planifie"
     note: str = ""
+    prospect_note: str = ""
     reminder_day_before_sent: bool = False
     reminder_1h_sent: bool = False
     claim_token: Optional[str] = None  # set when booked via the public claim/booking link, for audit
@@ -518,6 +520,10 @@ class EmployeeAvailabilitySlot(BaseModel):
     weekday: int  # 0 = Monday ... 6 = Sunday
     start_time: str  # "HH:MM"
     end_time: str  # "HH:MM"
+
+
+class EmployeeAvailabilityUpdate(BaseModel):
+    slots: List[EmployeeAvailabilitySlot]
 
 
 class EmployeeAvailability(BaseModel):
@@ -542,10 +548,30 @@ class ClaimRequest(ClaimRequestCreate):
     id: str = Field(default_factory=_uid)
     status: str = "pending_verification"  # pending_verification, a_verifier, verified, rejected, revoked
     verification_method: str = ""  # email_code, manual
+    verification_code: str = ""  # 6-digit code emailed to the claimant; cleared once the email step passes
+    verification_code_sent_at: Optional[datetime] = None
     verified_at: Optional[datetime] = None
-    verified_by_user_id: Optional[str] = None
-    club_id: Optional[str] = None  # set once the club is created
+    verified_by_user_id: Optional[str] = None  # the platform admin who approved the manual review step
+    rejection_note: str = ""
+    club_id: Optional[str] = None  # set once the claimant's account + club are created (activation step)
     ip_address: str = ""
+    created_at: datetime = Field(default_factory=_now)
+
+
+# ---------- Public booking link (Partie C) ----------
+# `id` IS the single-use token used in the public URL — same convention as
+# the existing unauth links (fee payment, lead unsubscribe): an unguessable
+# UUID4 rather than a cryptographically signed token, to stay consistent
+# with the rest of this codebase.
+class BookingLink(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    id: str = Field(default_factory=_uid)
+    lead_id: str
+    appointment_type: str  # one of APPOINTMENT_TYPES
+    employee_id: Optional[str] = None  # None = any available employee
+    expires_at: datetime
+    used_at: Optional[datetime] = None
+    appointment_id: Optional[str] = None  # set once used
     created_at: datetime = Field(default_factory=_now)
 
 

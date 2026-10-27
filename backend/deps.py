@@ -85,6 +85,15 @@ async def unique_club_slug(base: str) -> str:
     return s
 
 
+async def unique_lead_slug(base: str) -> str:
+    s = base
+    n = 1
+    while await get_db().leads.find_one({"annuaire_slug": s}):
+        n += 1
+        s = f"{base}-{n}"
+    return s
+
+
 async def delete_club_cascade(club_id: str):
     """Permanently delete a club and everything tied to it: members, fees,
     sessions, announcements, blog posts, documents, prospects, payment

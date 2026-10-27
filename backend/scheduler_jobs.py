@@ -4,8 +4,9 @@ import logging
 from datetime import datetime, timezone, timedelta
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
-from email_utils import send_email, reminder_html, trial_reminder_html, trial_ended_html
+from email_utils import send_email, reminder_html, trial_reminder_html, trial_ended_html, callback_summary_html, appointment_reminder_html
 from sms_utils import send_sms, sms_configured, format_phone, reminder_sms
+from telegram_utils import notify_admin_telegram
 
 logger = logging.getLogger("scheduler")
 
@@ -162,6 +163,72 @@ async def run_trial_lifecycle(db):
     return {"reminders": reminders_sent, "downgraded": downgraded}
 
 
+async def run_callback_summary(db):
+    """Daily morning job (Partie B): each sales employee gets their callback
+    queue for the day — overdue ones first — by email and, if configured, Telegram."""
+    now = datetime.now(timezone.utc)
+    end_of_today = now.replace(hour=23, minute=59, second=59, microsecond=0)
+    sent = 0
+    async for employee in db.users.find({"is_sales_employee": True}, {"_id": 0}):
+        leads = await db.leads.find(
+            {
+                "assigned_to_user_id": employee["id"],
+                "callback_at": {"$ne": None, "$lte": end_of_today.isoformat()},
+                "do_not_call": {"$ne": True},
+            },
+            {"_id": 0, "name": 1, "city": 1, "callback_at": 1},
+        ).sort("callback_at", 1).to_list(200)
+        if not leads:
+            continue
+        overdue = [l for l in leads if l["callback_at"] < now.isoformat()]
+        today = [l for l in leads if l["callback_at"] >= now.isoformat()]
+        if employee.get("email"):
+            await send_email(
+                employee["email"], f"Vos rappels du jour ({len(leads)})",
+                callback_summary_html(employee.get("name", ""), overdue, today),
+                kind="callback_summary",
+            )
+        if employee.get("telegram_chat_id"):
+            lines = "\n".join(f"- {l['name']} ({l.get('city','')})" + (" [EN RETARD]" if l in overdue else "") for l in leads[:20])
+            await notify_admin_telegram(employee["telegram_chat_id"], f"📞 Vos rappels du jour ({len(leads)}):\n{lines}")
+        sent += 1
+    if sent:
+        logger.info("Sent %d callback summaries", sent)
+    return sent
+
+
+async def run_appointment_reminders(db):
+    """Runs every 15 minutes (Partie C): sends the day-before reminder to
+    appointments starting in roughly 24h, and the 1h-before reminder to
+    appointments starting in roughly 1h — each only once, via its own
+    idempotency flag on the appointment document."""
+    now = datetime.now(timezone.utc)
+    sent = 0
+
+    async def _remind(window_start, window_end, flag, label):
+        nonlocal sent
+        async for appt in db.appointments.find({
+            "status": {"$in": ["planifie", "confirme"]},
+            flag: {"$ne": True},
+            "start_at": {"$gte": window_start.isoformat(), "$lt": window_end.isoformat()},
+        }, {"_id": 0}):
+            lead = await db.leads.find_one({"id": appt["lead_id"]}, {"_id": 0, "name": 1, "email": 1})
+            employee = await db.users.find_one({"id": appt["assigned_to_user_id"]}, {"_id": 0, "name": 1, "email": 1})
+            if lead and lead.get("email"):
+                await send_email(lead["email"], f"Rappel — rendez-vous {label}", appointment_reminder_html(appt, lead.get("name", ""), label), kind="appointment_reminder")
+            if employee and employee.get("email"):
+                await send_email(employee["email"], f"Rappel — rendez-vous {label}", appointment_reminder_html(appt, employee.get("name", ""), label), kind="appointment_reminder")
+            await db.appointments.update_one({"id": appt["id"]}, {"$set": {flag: True}})
+            sent += 1
+
+    await _remind(now + timedelta(hours=23, minutes=45), now + timedelta(hours=24, minutes=15), "reminder_day_before_sent", "demain")
+    await _remind(now + timedelta(minutes=45), now + timedelta(minutes=75), "reminder_1h_sent", "dans 1h")
+
+    if sent:
+        logger.info("Sent %d appointment reminders", sent)
+    return sent
+
+
 def create_scheduler(db):
     scheduler = AsyncIOScheduler(timezone="Europe/Paris")
     # Fee reminders: every day at 09:00
@@ -170,4 +237,8 @@ def create_scheduler(db):
     scheduler.add_job(lambda: run_season_reminders(db), "cron", hour=9, minute=15, id="season_reminders")
     # Trial lifecycle (J-5 / J-1 reminders, J+0 downgrade to free): every day at 08:30
     scheduler.add_job(lambda: run_trial_lifecycle(db), "cron", hour=8, minute=30, id="trial_lifecycle")
+    # Sales callback summary (Partie B): every weekday morning at 08:00
+    scheduler.add_job(lambda: run_callback_summary(db), "cron", hour=8, minute=0, id="callback_summary")
+    # Appointment reminders (Partie C): day-before + 1h-before, checked every 15 min
+    scheduler.add_job(lambda: run_appointment_reminders(db), "interval", minutes=15, id="appointment_reminders")
     return scheduler
