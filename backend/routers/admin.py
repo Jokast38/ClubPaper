@@ -677,6 +677,27 @@ async def set_lead_annuaire_visibility(lead_id: str, payload: dict, user: dict =
     return await db.leads.find_one({"id": lead_id}, {"_id": 0})
 
 
+@router.post("/leads/annuaire/bulk-publish")
+async def bulk_publish_annuaire(payload: dict, user: dict = Depends(platform_admin_user)):
+    """Same as set_lead_annuaire_visibility, applied to a batch of leads at
+    once from the call-queue's multi-select bar."""
+    db = get_db()
+    lead_ids = payload.get("lead_ids") or []
+    from deps import slugify as _slugify, unique_lead_slug
+    published = 0
+    for lead_id in lead_ids:
+        lead = await db.leads.find_one({"id": lead_id}, {"_id": 0})
+        if not lead:
+            continue
+        update = {"annuaire_visible": True, "updated_at": datetime.now(timezone.utc).isoformat()}
+        if not lead.get("annuaire_slug"):
+            base = _slugify(f"{lead.get('name','')}-{lead.get('city','')}" if lead.get("city") else lead.get("name", ""))
+            update["annuaire_slug"] = await unique_lead_slug(base)
+        await db.leads.update_one({"id": lead_id}, {"$set": update})
+        published += 1
+    return {"published": published}
+
+
 @router.put("/leads/{lead_id}")
 async def update_lead(lead_id: str, payload: dict, user: dict = Depends(sales_user)):
     """Update status/notes/contact/qualification — touching an unclaimed lead

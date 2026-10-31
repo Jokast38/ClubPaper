@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Phone, Search, Upload, Mail, Send, ChevronLeft, ChevronRight, UserCircle2, Users as UsersIcon, Sparkles, Trash2, Flame, ShieldOff, Clock, Pencil, X, Check, CalendarPlus } from "lucide-react";
+import { Phone, Search, Upload, Mail, Send, ChevronLeft, ChevronRight, UserCircle2, Users as UsersIcon, Sparkles, Trash2, Flame, ShieldOff, Clock, Pencil, X, Check, CalendarPlus, Building2 } from "lucide-react";
 import { toast } from "sonner";
 
 const STATUS_LABEL = {
@@ -156,6 +156,20 @@ export default function LeadsWorkspace() {
     } catch { toast.error("Impossible de supprimer"); }
   };
 
+  const [publishing, setPublishing] = useState(false);
+  const publishSelected = async () => {
+    if (selected.size === 0) return;
+    if (!window.confirm(`Publier ${selected.size} lead(s) sur l'annuaire public ?`)) return;
+    setPublishing(true);
+    try {
+      const { data } = await api.post("/admin/leads/annuaire/bulk-publish", { lead_ids: Array.from(selected) });
+      toast.success(`${data.published} fiche(s) publiée(s) sur l'annuaire`);
+      setSelected(new Set());
+      load();
+    } catch { toast.error("Impossible de publier"); }
+    finally { setPublishing(false); }
+  };
+
   const totalPages = Math.max(1, Math.ceil(leads.total / PAGE_SIZE));
   const counts = leads.counts_by_status || {};
 
@@ -238,6 +252,9 @@ export default function LeadsWorkspace() {
                 </Button>
                 <Button size="sm" className="rounded-full" style={{background:"var(--club-primary)"}} onClick={sendCampaign} data-testid="leads-send-campaign-btn">
                   <Send size={14} className="mr-1.5" />Envoyer campagne ({selected.size})
+                </Button>
+                <Button size="sm" variant="outline" className="rounded-full" onClick={publishSelected} disabled={publishing} data-testid="leads-publish-annuaire-btn">
+                  <Building2 size={14} className="mr-1.5" />{publishing ? "Publication…" : `Publier sur l'annuaire (${selected.size})`}
                 </Button>
                 <Button size="sm" variant="outline" className="rounded-full text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700" onClick={deleteSelected} data-testid="leads-delete-selected-btn">
                   <Trash2 size={14} className="mr-1.5" />Supprimer ({selected.size})

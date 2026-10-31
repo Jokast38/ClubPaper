@@ -10,7 +10,7 @@ from deps import serialize
 from models import Lead, User
 from routers.public import list_annuaire, annuaire_detail, submit_claim, verify_claim, activate_claim
 from routers.claims import list_claims, approve_claim, reject_claim
-from routers.admin import set_lead_annuaire_visibility
+from routers.admin import set_lead_annuaire_visibility, bulk_publish_annuaire
 
 
 def _tag():
@@ -42,6 +42,22 @@ async def visible_lead(db):
 async def test_publish_toggle_allocates_a_stable_slug(db, visible_lead):
     assert visible_lead["annuaire_visible"] is True
     assert visible_lead["annuaire_slug"]
+
+
+@pytest.mark.asyncio
+async def test_bulk_publish_allocates_slugs_for_each_lead(db):
+    leads = [Lead(name=_tag(), city="Marseille", sport="Rugby", source="rna_import") for _ in range(3)]
+    for l in leads:
+        await db.leads.insert_one(serialize(l))
+    try:
+        result = await bulk_publish_annuaire({"lead_ids": [l.id for l in leads]}, user={"is_platform_admin": True})
+        assert result["published"] == 3
+        docs = await db.leads.find({"id": {"$in": [l.id for l in leads]}}, {"_id": 0}).to_list(3)
+        assert all(d["annuaire_visible"] is True for d in docs)
+        assert len({d["annuaire_slug"] for d in docs}) == 3
+    finally:
+        for l in leads:
+            await db.leads.delete_one({"id": l.id})
 
 
 @pytest.mark.asyncio
