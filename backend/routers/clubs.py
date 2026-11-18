@@ -88,7 +88,7 @@ async def cancel_subscription(user: dict = Depends(current_user)):
             f"Votre engagement saison court jusqu'au {ends_at[:10]} — la résiliation sera possible à partir de cette date.",
         )
     await db.clubs.update_one({"id": club["id"]}, {"$set": {
-        "plan": "free", "subscription_status": "trial",
+        "plan": "free", "subscription_status": "trial", "plan_tier": None,
         "commitment_started_at": None, "commitment_ends_at": None, "billing_mode": None,
     }})
     return {"ok": True}
@@ -164,6 +164,9 @@ def _integrations_public(raw: dict) -> dict:
         "twilio_configured": bool(raw.get("twilio_account_sid") and raw.get("twilio_auth_token")),
         "twilio_phone_from": raw.get("twilio_phone_from", ""),
         "twilio_enabled": bool(raw.get("twilio_enabled")),
+        "brevo_configured": bool(raw.get("brevo_api_key")),
+        "brevo_sms_sender": raw.get("brevo_sms_sender", ""),
+        "brevo_enabled": bool(raw.get("brevo_enabled")),
         "telegram_configured": bool(raw.get("telegram_bot_token") and raw.get("telegram_chat_id")),
         "telegram_enabled": bool(raw.get("telegram_enabled")),
     }
@@ -182,7 +185,7 @@ async def update_integrations(data: ClubIntegrations, user: dict = Depends(curre
     payload = data.model_dump(exclude_none=True)
     existing = club.get("integrations") or {}
     for k, v in payload.items():
-        if v == "" and k in {"resend_api_key", "stripe_secret_key", "stripe_publishable_key", "twilio_account_sid", "twilio_auth_token", "telegram_bot_token", "telegram_chat_id"}:
+        if v == "" and k in {"resend_api_key", "stripe_secret_key", "stripe_publishable_key", "twilio_account_sid", "twilio_auth_token", "brevo_api_key", "telegram_bot_token", "telegram_chat_id"}:
             continue
         existing[k] = v
     await db.clubs.update_one({"id": club["id"]}, {"$set": {"integrations": existing}})

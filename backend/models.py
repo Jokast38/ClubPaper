@@ -99,6 +99,8 @@ class Club(BaseModel):
     commitment_started_at: Optional[datetime] = None  # set when the club picks "Engagement saison"
     commitment_ends_at: Optional[datetime] = None      # resignation is blocked until this date
     billing_mode: Optional[str] = None  # "monthly" or "season_upfront" once plan == "paid"
+    plan_tier: Optional[str] = None  # "club" (19,99 €) ou "pro" (29,99 €) quand plan == "paid" — fixe le quota SMS inclus
+    sms_quota_override: Optional[int] = None  # quota SMS mensuel fixé à la main par la plateforme (partenariat)
     upgrade_prompt_count: int = 0  # how many times a free-plan limit has blocked this club — "hot lead" signal
     trial_reminder_5_sent: bool = False  # idempotency flags for the daily trial-lifecycle job
     trial_reminder_1_sent: bool = False
@@ -288,6 +290,9 @@ class ClubIntegrations(BaseModel):
     twilio_auth_token: Optional[str] = ""
     twilio_phone_from: Optional[str] = ""
     twilio_enabled: bool = False
+    brevo_api_key: Optional[str] = ""
+    brevo_sms_sender: Optional[str] = ""
+    brevo_enabled: bool = False
     telegram_bot_token: Optional[str] = ""
     telegram_chat_id: Optional[str] = ""
     telegram_enabled: bool = False
@@ -303,6 +308,9 @@ class ClubIntegrationsPublic(BaseModel):
     twilio_configured: bool = False
     twilio_phone_from: Optional[str] = ""
     twilio_enabled: bool = False
+    brevo_configured: bool = False
+    brevo_sms_sender: Optional[str] = ""
+    brevo_enabled: bool = False
     telegram_configured: bool = False
     telegram_enabled: bool = False
 

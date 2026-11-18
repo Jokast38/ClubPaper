@@ -16,6 +16,12 @@ import NotificationsPanel from "@/components/NotificationsPanel";
 import DrivePanel from "@/components/DrivePanel";
 import CalendarSyncPanel from "@/components/CalendarSyncPanel";
 import ReferralPanel from "@/components/ReferralPanel";
+import SmsPanel from "@/components/SmsPanel";
+
+const PLANS = [
+  { id: "club", name: "Club", monthly: "19,99€", season: "79,96€", sms: "50 SMS/mois inclus", monthlyKey: "clubmanager_monthly", seasonKey: "clubmanager_season_upfront" },
+  { id: "pro", name: "Pro", monthly: "29,99€", season: "119,96€", sms: "300 SMS/mois inclus", monthlyKey: "clubmanager_pro_monthly", seasonKey: "clubmanager_pro_season_upfront", highlight: true },
+];
 import SignaturePad from "@/components/SignaturePad";
 
 export default function Settings() {
@@ -165,7 +171,7 @@ export default function Settings() {
           <div className="flex-1">
             <h3 className="font-display font-semibold text-lg text-slate-900">Abonnement</h3>
             <p className="text-sm text-slate-600 mt-1">
-              {club.plan === "paid" ? "Engagement saison actif — merci ! 🎉" :
+              {club.plan === "paid" ? `${club.plan_tier === "pro" ? "Plan Pro" : "Plan Club"} — engagement saison actif, merci ! 🎉` :
                 club.plan === "trial" ? (daysLeft > 0 ? `Essai gratuit — ${daysLeft} jour${daysLeft > 1 ? "s" : ""} restant${daysLeft > 1 ? "s" : ""}` : "Essai terminé") :
                 "Plan gratuit — 25 adhérents max, 2 annonces/mois, sans paiement en ligne ni SMS."}
             </p>
@@ -184,27 +190,30 @@ export default function Settings() {
               </div>
             ) : (
               <div className="mt-4 grid sm:grid-cols-2 gap-3">
-                <div className="paper-card p-4 border-2 border-orange-200">
-                  <div className="font-display font-semibold text-slate-900">Engagement saison</div>
-                  <div className="text-2xl font-display font-bold text-orange-600 mt-1">19,99€<span className="text-sm text-slate-500 font-normal">/mois</span></div>
-                  <p className="text-xs text-slate-500 mt-1">Engagement 1 saison (6 mois), sans limite.</p>
-                  <Button className="mt-3 rounded-full h-10 w-full" style={{background:"var(--club-primary)"}} onClick={() => subscribe("clubmanager_monthly")} disabled={busy} data-testid="subscribe-monthly-btn">
-                    Choisir ce plan
-                  </Button>
-                </div>
-                <div className="paper-card p-4 border-2 border-slate-200">
-                  <div className="font-display font-semibold text-slate-900">Saison en une fois</div>
-                  <div className="text-2xl font-display font-bold text-slate-900 mt-1">79,96€</div>
-                  <p className="text-xs text-emerald-600 font-medium mt-1">2 mois offerts — 6 mois payés 4</p>
-                  <Button variant="outline" className="mt-3 rounded-full h-10 w-full" onClick={() => subscribe("clubmanager_season_upfront")} disabled={busy} data-testid="subscribe-season-btn">
-                    Choisir ce plan
-                  </Button>
-                </div>
+                {PLANS.map((p) => (
+                  <div key={p.id} className={`paper-card p-4 border-2 ${p.highlight ? "border-orange-300" : "border-slate-200"}`} data-testid={`plan-card-${p.id}`}>
+                    <div className="flex items-center justify-between">
+                      <div className="font-display font-semibold text-slate-900">{p.name}</div>
+                      {p.highlight && <span className="pill-tag status-paid">Le plus complet</span>}
+                    </div>
+                    <div className="text-2xl font-display font-bold text-orange-600 mt-1">{p.monthly}<span className="text-sm text-slate-500 font-normal">/mois</span></div>
+                    <p className="text-xs text-slate-600 mt-1">Engagement 1 saison (6 mois) · <b>{p.sms}</b></p>
+                    <Button className="mt-3 rounded-full h-10 w-full" style={{background:"var(--club-primary)"}} onClick={() => subscribe(p.monthlyKey)} disabled={busy} data-testid={`subscribe-${p.id}-monthly-btn`}>
+                      Mensuel — {p.monthly}/mois
+                    </Button>
+                    <Button variant="outline" className="mt-2 rounded-full h-10 w-full" onClick={() => subscribe(p.seasonKey)} disabled={busy} data-testid={`subscribe-${p.id}-season-btn`}>
+                      Saison en une fois — {p.season}
+                    </Button>
+                    <p className="text-[11px] text-emerald-600 font-medium mt-1 text-center">2 mois offerts en payant la saison</p>
+                  </div>
+                ))}
               </div>
             )}
           </div>
         </div>
       </div>
+
+      <SmsPanel />
 
       {/* Public link */}
       <div className="paper-card p-6">

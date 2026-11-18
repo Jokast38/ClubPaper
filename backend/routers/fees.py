@@ -20,6 +20,19 @@ logger = logging.getLogger(__name__)
 
 MONTHLY_PRICE_CENTS = 1999          # clubmanager_monthly — kept in sync with setup_stripe.py
 SEASON_UPFRONT_PRICE_CENTS = 7996   # clubmanager_season_upfront — 4 months billed, 6 months of access
+from sms_plans import PRO_PRICE_CENTS, PRO_SEASON_UPFRONT_PRICE_CENTS  # noqa: E402  (plan Pro)
+
+
+def _tier_from_key(lookup_key: str) -> str:
+    return "pro" if (lookup_key or "").startswith("clubmanager_pro") else "club"
+
+
+def _month_price(club: dict) -> int:
+    """Prix d'un mois (ou de la saison payée d'avance) pour les crédits de parrainage."""
+    pro = club.get("plan_tier") == "pro"
+    if club.get("billing_mode") == "season_upfront":
+        return PRO_SEASON_UPFRONT_PRICE_CENTS if pro else SEASON_UPFRONT_PRICE_CENTS
+    return PRO_PRICE_CENTS if pro else MONTHLY_PRICE_CENTS
 
 
 # ---- Fees ----
@@ -220,12 +233,20 @@ async def _activate_club_subscription(db, club_id: str, lookup_key: str, stripe_
     adjustment rather than a manual date calculation.
     """
     club = await db.clubs.find_one({"id": club_id}, {"_id": 0})
-    if not club or club.get("plan") == "paid":
+    tier = _tier_from_key(lookup_key)
+    if club and club.get("plan") == "paid":
+        # Déjà abonné : seul un passage Club -> Pro a encore un effet (idempotent)
+        if tier == "pro" and club.get("plan_tier") != "pro":
+            await db.clubs.update_one({"id": club_id}, {"$set": {"plan_tier": "pro"}})
+            asyncio.create_task(notify_admins_telegram(f"🚀 {club.get('name','')} passe au plan Pro"))
         return  # already activated — avoid double-crediting a referrer on a retry
+    if not club:
+        return
     now = datetime.now(timezone.utc)
     billing_mode = "season_upfront" if "season_upfront" in (lookup_key or "") else "monthly"
     update = {
         "plan": "paid",
+        "plan_tier": tier,
         "subscription_status": "active",
         "commitment_started_at": now.isoformat(),
         "commitment_ends_at": (now + timedelta(days=182)).isoformat(),
@@ -236,14 +257,14 @@ async def _activate_club_subscription(db, club_id: str, lookup_key: str, stripe_
     await db.clubs.update_one({"id": club_id}, {"$set": update})
     if stripe_customer_id:
         club["stripe_customer_id"] = stripe_customer_id
-    asyncio.create_task(notify_admins_telegram(f"💰 {club.get('name','')} vient de passer au plan payant ({billing_mode})"))
+    asyncio.create_task(notify_admins_telegram(f"💰 {club.get('name','')} vient de passer au plan {'Pro' if tier == 'pro' else 'Club'} ({billing_mode})"))
 
     # This club may itself have been accumulating referral rewards while it
     # was free/trial (as a referrer) — apply them now that it has billing set up.
     pending = club.get("referral_pending_credits", 0)
     if pending and club.get("stripe_customer_id"):
         try:
-            price = SEASON_UPFRONT_PRICE_CENTS if billing_mode == "season_upfront" else MONTHLY_PRICE_CENTS
+            price = _month_price({**club, "plan_tier": tier, "billing_mode": billing_mode})
             stripe.Customer.create_balance_transaction(
                 club["stripe_customer_id"],
                 amount=-price * pending,
@@ -271,9 +292,7 @@ async def _grant_referral_month(db, referrer: dict):
 
     if referrer.get("plan") == "paid" and referrer.get("stripe_customer_id"):
         try:
-            price = MONTHLY_PRICE_CENTS
-            if referrer.get("billing_mode") == "season_upfront":
-                price = SEASON_UPFRONT_PRICE_CENTS
+            price = _month_price(referrer)
             stripe.Customer.create_balance_transaction(
                 referrer["stripe_customer_id"],
                 amount=-price,  # negative = credit, applied to the next invoice

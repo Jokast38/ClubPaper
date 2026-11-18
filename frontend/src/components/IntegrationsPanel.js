@@ -29,6 +29,9 @@ export default function IntegrationsPanel() {
       twilio_auth_token: "",
       twilio_phone_from: data.twilio_phone_from || "",
       twilio_enabled: data.twilio_enabled,
+      brevo_api_key: "",
+      brevo_sms_sender: data.brevo_sms_sender || "",
+      brevo_enabled: data.brevo_enabled,
       telegram_bot_token: "",
       telegram_chat_id: "",
       telegram_enabled: data.telegram_enabled,
@@ -48,7 +51,7 @@ export default function IntegrationsPanel() {
       setStatus(data);
       toast.success("Intégrations enregistrées");
       // Clear secret input fields
-      setForm({ ...form, resend_api_key: "", stripe_secret_key: "", stripe_publishable_key: "", twilio_account_sid: "", twilio_auth_token: "", telegram_bot_token: "", telegram_chat_id: "" });
+      setForm({ ...form, resend_api_key: "", stripe_secret_key: "", stripe_publishable_key: "", twilio_account_sid: "", twilio_auth_token: "", brevo_api_key: "", telegram_bot_token: "", telegram_chat_id: "" });
     } catch { toast.error("Impossible d'enregistrer"); }
     finally { setBusy(false); }
   };
@@ -59,6 +62,7 @@ export default function IntegrationsPanel() {
     try {
       const { data } = await api.post("/sms/test", { to: smsTo });
       if (data.status === "sent") toast.success("SMS envoyé ✅");
+      else if (data.status === "queued") toast.success("SMS en file d'envoi (SMS inclus ClubPaper)");
       else if (data.status === "simulated") toast.info("SMS simulé (Twilio pas encore actif)");
       else if (data.status === "skipped") toast.info("Twilio désactivé — activez la carte");
       else toast.error(data.error || "Échec");
@@ -110,7 +114,7 @@ export default function IntegrationsPanel() {
 
       <IntegrationCard
         icon={MessageSquare}
-        title="Twilio — SMS"
+        title="Twilio — SMS gros volume (votre compte)"
         configured={status.twilio_configured}
         enabled={form.twilio_enabled}
         onToggle={(v) => setForm({...form, twilio_enabled: v})}
@@ -128,6 +132,24 @@ export default function IntegrationsPanel() {
             </Button>
           </div>
           <div className="text-xs text-slate-500 mt-1">Utilise les clés Twilio ci-dessus. Assurez-vous que la carte est activée.</div>
+        </div>
+        <div className="sm:col-span-2 text-xs text-slate-500">
+          Optionnel : sans Twilio ni Brevo, vos SMS utilisent les « SMS inclus » de votre plan. Avec votre propre compte, les envois sont illimités et facturés par le fournisseur.
+        </div>
+      </IntegrationCard>
+
+      <IntegrationCard
+        icon={MessageSquare}
+        title="Brevo — SMS gros volume (votre compte)"
+        configured={status.brevo_configured}
+        enabled={form.brevo_enabled}
+        onToggle={(v) => setForm({...form, brevo_enabled: v})}
+        testId="int-brevo"
+      >
+        <div><Label>Clé API Brevo</Label><Input type="password" placeholder={status.brevo_configured ? "•••••••••• (configurée)" : "xkeysib-..."} value={form.brevo_api_key} onChange={(e) => setForm({...form, brevo_api_key: e.target.value})} data-testid="brevo-key-input" className="mt-1 h-11" /></div>
+        <div><Label>Nom d'expéditeur (11 caractères max)</Label><Input maxLength={11} placeholder="MonClub" value={form.brevo_sms_sender} onChange={(e) => setForm({...form, brevo_sms_sender: e.target.value.replace(/[^A-Za-z0-9]/g, "")})} data-testid="brevo-sender-input" className="mt-1 h-11" /></div>
+        <div className="sm:col-span-2 text-xs text-slate-500">
+          Les adhérents voient le nom du club comme expéditeur. Créez un compte sur brevo.com, achetez des crédits SMS, puis copiez votre clé API (Paramètres → SMTP & API). Prioritaire sur Twilio si les deux sont actifs.
         </div>
       </IntegrationCard>
 

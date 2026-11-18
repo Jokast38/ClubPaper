@@ -278,9 +278,32 @@ Mode test recommandé pour le développement. Le catalogue (produit + prix `club
 
 L'envoi d'emails (bienvenue, club prêt, relances, annonces, nouvelles demandes, réponses de support) passe par `email_utils.send_email()`, qui choisit automatiquement le premier canal disponible : **SMTP natif** (si `SMTP_HOST` est renseigné) → **Resend** (si `RESEND_API_KEY` est renseigné) → simulation loguée (aucun email réel, utile en dev).
 
-### SMS (Twilio)
+### SMS (SMS inclus, Twilio, Brevo)
 
-Optionnel — sans clé configurée, les notifications SMS sont simplement désactivées silencieusement.
+Fournisseur choisi pour chaque club (`backend/sms_plans.py`) :
+
+1. **Brevo** ou **Twilio** du club (Paramètres → Intégrations) : envois illimités, facturés au club par le fournisseur.
+2. Sinon les **SMS inclus** ClubPaper, envoyés par la passerelle SMS personnelle (serveur SMS de Dashboardjk), dans la limite d'un quota mensuel compté en segments :
+
+| Plan | Prix | SMS inclus / mois |
+|---|---|---|
+| Essai | gratuit 30 j | `SMS_QUOTA_TRIAL` (10) |
+| Club | 19,99 €/mois ou 79,96 €/saison | `SMS_QUOTA_CLUB` (50) |
+| Pro | 29,99 €/mois ou 119,96 €/saison | `SMS_QUOTA_PRO` (300) |
+| Gratuit | — | aucun SMS |
+
+L'admin plateforme peut fixer un quota sur mesure par club (onglet « SMS inclus », champ `sms_quota_override`).
+
+Les SMS inclus passent par une file d'attente (`sms_outbox`) : rien n'est perdu si la passerelle est injoignable. Ils sont transmis un par un au serveur SMS, qui applique la cadence anti-blocage de la ligne (intervalle, plafonds horaire et journalier, heures calmes). Les statuts reviennent par webhook signé (`POST /api/sms/gateway-webhook`). Une réponse « STOP » désinscrit le numéro des SMS du club.
+
+| Variable | Rôle |
+|---|---|
+| `CLUBPAPER_SMS_URL` | URL du serveur SMS (ex. `https://dashboardjk.onrender.com`) |
+| `CLUBPAPER_SMS_API_KEY` | clé `sk_…` de la plateforme « ClubPaper » créée dans le dashboard SMS |
+| `CLUBPAPER_SMS_WEBHOOK_SECRET` | « Secret callback » de cette plateforme |
+| `SMS_QUOTA_TRIAL` / `SMS_QUOTA_CLUB` / `SMS_QUOTA_PRO` | quotas mensuels (à garder en phase avec les textes des pages Tarifs et Paramètres) |
+
+Sans aucune de ces configurations, les notifications SMS sont simplement désactivées.
 
 ---
 

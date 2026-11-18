@@ -19,6 +19,18 @@ def setup_catalog():
                 {"lookup_key": "clubmanager_season_upfront", "amount": 7996, "currency": "eur"},
             ],
         },
+        {
+            # Plan Pro : quota de « SMS inclus » plus élevé (voir sms_plans.py)
+            "emergent_product_id": "clubmanager_pro",
+            "name": "ClubManager - Abonnement Pro (SMS inclus)",
+            "tax_code": "txcd_10103001",
+            "prices": [
+                {"lookup_key": "clubmanager_pro_monthly", "amount": 2999, "currency": "eur", "interval": "month"},
+                {"lookup_key": "clubmanager_pro_season_upfront", "amount": 11996, "currency": "eur"},
+                # Passage Club saison -> Pro saison : la différence (119,96 - 79,96)
+                {"lookup_key": "clubmanager_pro_season_upgrade", "amount": 4000, "currency": "eur"},
+            ],
+        },
     ]
 
     for entry in catalog:

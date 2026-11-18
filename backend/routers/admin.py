@@ -212,7 +212,7 @@ async def list_users(q: str = "", page: int = 1, page_size: int = 20, user: dict
 async def platform_notifications(
     limit: int = Query(100, ge=1, le=500),
     channel: str = Query("", pattern="^(email|sms|)$"),
-    status: str = Query("", pattern="^(sent|simulated|skipped|error|)$"),
+    status: str = Query("", pattern="^(sent|queued|simulated|skipped|error|)$"),
     user: dict = Depends(platform_admin_user),
 ):
     db = get_db()

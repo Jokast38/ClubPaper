@@ -61,6 +61,14 @@ export default function AdminDashboard() {
     } catch { toast.error("Impossible de mettre à jour"); }
   };
 
+  const updateTier = async (clubId, plan_tier) => {
+    try {
+      await api.put(`/admin/clubs/${clubId}/sms`, { plan_tier });
+      toast.success(`Palier ${plan_tier === "pro" ? "Pro" : "Club"} appliqué`);
+      loadClubs();
+    } catch { toast.error("Impossible de mettre à jour"); }
+  };
+
   const resolveTicket = async (id) => {
     try {
       await api.put(`/admin/support/${id}`, { status: "resolved" });
@@ -88,6 +96,7 @@ export default function AdminDashboard() {
     { id: "overview", label: "Vue d'ensemble" },
     { id: "clubs", label: "Clubs & abonnements" },
     { id: "notifications", label: "Emails / SMS" },
+    { id: "sms", label: "SMS inclus" },
     { id: "support", label: `Réclamations${tickets.filter(t => t.status === "new").length ? ` (${tickets.filter(t => t.status === "new").length})` : ""}` },
     { id: "referrals", label: "Parrainage" },
     { id: "campaigns", label: "Campagnes mails" },
@@ -121,13 +130,101 @@ export default function AdminDashboard() {
       </div>
 
       {tab === "overview" && stats && <Overview stats={stats} />}
-      {tab === "clubs" && <ClubsTab clubs={clubs} onUpdateStatus={updateSubscription} onUpdatePlan={updatePlan} onDelete={deleteClub} />}
+      {tab === "clubs" && <ClubsTab clubs={clubs} onUpdateStatus={updateSubscription} onUpdatePlan={updatePlan} onUpdateTier={updateTier} onDelete={deleteClub} />}
+      {tab === "sms" && <SmsAdminTab />}
       {tab === "notifications" && <NotificationsTab notifications={notifications} />}
       {tab === "support" && <SupportTab tickets={tickets} onResolve={resolveTicket} onReply={replyTicket} />}
       {tab === "referrals" && <ReferralsTab referrals={referrals} />}
       {tab === "campaigns" && campaignStats && <CampaignsTab stats={campaignStats} />}
       {tab === "prospection" && <ProspectionTab />}
       {tab === "claims" && <ClaimsTab />}
+    </div>
+  );
+}
+
+const REQ_OPTION = { pro: "Plan Pro", twilio: "Twilio", brevo: "Brevo", partenariat: "Partenariat" };
+const REQ_STATUS = { nouvelle: "Nouvelle", en_cours: "En cours", traitee: "Traitée", refusee: "Refusée" };
+
+function SmsAdminTab() {
+  const [data, setData] = useState(null);
+  const [edits, setEdits] = useState({});
+  const load = () => api.get("/admin/sms/overview").then((r) => setData(r.data)).catch(() => toast.error("Chargement impossible"));
+  useEffect(() => { load(); }, []);
+  if (!data) return <div className="mt-6 text-sm text-slate-500">Chargement…</div>;
+
+  const saveQuota = async (clubId, clear = false) => {
+    try {
+      const v = edits[clubId];
+      await api.put(`/admin/clubs/${clubId}/sms`, clear ? { clear_override: true } : { sms_quota_override: parseInt(v, 10) || 0 });
+      toast.success(clear ? "Quota du plan rétabli" : "Quota personnalisé enregistré");
+      setEdits({ ...edits, [clubId]: undefined });
+      load();
+    } catch { toast.error("Impossible de mettre à jour"); }
+  };
+  const setStatus = async (id, status) => {
+    try { await api.put(`/admin/sms/requests/${id}`, { status }); load(); }
+    catch { toast.error("Impossible de mettre à jour"); }
+  };
+  const bs = data.by_status || {};
+  const total = Object.values(bs).reduce((a, b) => a + b, 0);
+  const kpis = [
+    ["SMS ce mois", total],
+    ["Délivrés", bs.delivered || 0],
+    ["En file / transmis", (bs.queued || 0) + (bs.sending || 0) + (bs.submitted || 0)],
+    ["Échecs", (bs.failed || 0) + (bs.rejected || 0)],
+  ];
+
+  return (
+    <div className="mt-6 space-y-6">
+      <div className="grid sm:grid-cols-4 gap-3">
+        {kpis.map(([l, v]) => (
+          <div key={l} className="paper-card p-4"><div className="text-xs text-slate-500">{l}</div><div className="font-display text-2xl font-bold text-slate-900 mt-1">{v}</div></div>
+        ))}
+      </div>
+      <p className="text-sm text-slate-500">
+        Quotas mensuels par défaut : essai {data.quotas.trial} · Club {data.quotas.club} · Pro {data.quotas.pro} SMS (variables SMS_QUOTA_*). La cadence d'envoi se règle dans le dashboard du serveur SMS.
+      </p>
+
+      <div className="paper-card p-5">
+        <h3 className="font-display font-semibold text-slate-900 mb-3">Demandes de volume</h3>
+        {data.requests.length === 0 && <p className="text-sm text-slate-500">Aucune demande pour l'instant.</p>}
+        <div className="space-y-2">
+          {data.requests.map((r) => (
+            <div key={r.id} className="flex flex-wrap items-center gap-3 border border-slate-200 rounded-xl p-3">
+              <div className="flex-1 min-w-0">
+                <div className="font-medium text-slate-900">{r.club_name} — {REQ_OPTION[r.option] || r.option}{r.monthly_volume ? ` · ~${r.monthly_volume} SMS/mois` : ""}</div>
+                <div className="text-xs text-slate-500">{r.contact_email} · {new Date(r.created_at).toLocaleDateString("fr-FR")} · utilisé {r.used}/{r.quota ?? "∞"} ({r.tier})</div>
+                {r.message && <div className="text-sm text-slate-600 mt-1">{r.message}</div>}
+              </div>
+              <Select value={r.status} onValueChange={(v) => setStatus(r.id, v)}>
+                <SelectTrigger className="h-9 w-[130px]"><SelectValue /></SelectTrigger>
+                <SelectContent>{Object.entries(REQ_STATUS).map(([k, l]) => <SelectItem key={k} value={k}>{l}</SelectItem>)}</SelectContent>
+              </Select>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="paper-card p-5">
+        <h3 className="font-display font-semibold text-slate-900 mb-3">Consommation par club (mois en cours)</h3>
+        {data.clubs.length === 0 && <p className="text-sm text-slate-500">Aucun SMS inclus envoyé ce mois-ci.</p>}
+        <div className="space-y-2">
+          {data.clubs.map((c) => (
+            <div key={c.club_id} className="flex flex-wrap items-center gap-3 border border-slate-200 rounded-xl p-3">
+              <div className="flex-1 min-w-[180px]">
+                <div className="font-medium text-slate-900">{c.name} <span className="text-xs text-slate-500">({c.tier})</span></div>
+                <div className="h-1.5 rounded-full bg-slate-100 mt-2 overflow-hidden max-w-xs">
+                  <div className={`h-full ${c.used >= c.quota ? "bg-red-500" : "bg-emerald-500"}`} style={{ width: `${c.quota ? Math.min(100, (c.used / c.quota) * 100) : 100}%` }} />
+                </div>
+              </div>
+              <div className="text-sm text-slate-700 w-32">{c.used} / {c.quota} SMS{c.failed ? <span className="text-red-600"> · {c.failed} ✗</span> : null}</div>
+              <input type="number" min={0} placeholder="Quota perso" value={edits[c.club_id] ?? ""} onChange={(e) => setEdits({ ...edits, [c.club_id]: e.target.value })} className="h-9 w-28 rounded-md border border-slate-200 px-2 text-sm" />
+              <Button size="sm" variant="outline" className="rounded-full" disabled={!edits[c.club_id]} onClick={() => saveQuota(c.club_id)}>Fixer</Button>
+              <Button size="sm" variant="ghost" className="rounded-full" onClick={() => saveQuota(c.club_id, true)}>Quota du plan</Button>
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }
@@ -247,7 +344,7 @@ const STATUS_CLASS = { trial: "status-pending", active: "status-paid", past_due:
 const PLAN_LABEL = { free: "Gratuit", trial: "Essai", paid: "Payant" };
 const PLAN_CLASS = { free: "status-pending", trial: "status-pending", paid: "status-paid" };
 
-function ClubsTab({ clubs, onUpdateStatus, onUpdatePlan, onDelete }) {
+function ClubsTab({ clubs, onUpdateStatus, onUpdatePlan, onUpdateTier, onDelete }) {
   const [confirming, setConfirming] = useState(null);
   return (
     <div className="mt-6">
@@ -268,6 +365,15 @@ function ClubsTab({ clubs, onUpdateStatus, onUpdatePlan, onDelete }) {
                 <SelectItem value="paid">Payant</SelectItem>
               </SelectContent>
             </Select>
+            {c.plan === "paid" && (
+              <Select value={c.plan_tier === "pro" ? "pro" : "club"} onValueChange={(v) => onUpdateTier(c.id, v)}>
+                <SelectTrigger className="h-10 w-[110px]" data-testid={`admin-club-tier-${c.id}`}><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="club">Club</SelectItem>
+                  <SelectItem value="pro">Pro</SelectItem>
+                </SelectContent>
+              </Select>
+            )}
             <span className={`pill-tag ${STATUS_CLASS[c.subscription_status] || "status-pending"}`}>{STATUS_LABEL[c.subscription_status] || c.subscription_status}</span>
             <Select value={c.subscription_status} onValueChange={(v) => onUpdateStatus(c.id, v)}>
               <SelectTrigger className="h-10 w-[160px]" data-testid={`admin-club-status-${c.id}`}><SelectValue /></SelectTrigger>
@@ -345,6 +451,7 @@ function NotificationsTab({ notifications }) {
           <SelectContent>
             <SelectItem value="all">Tous statuts</SelectItem>
             <SelectItem value="sent">Envoyés</SelectItem>
+            <SelectItem value="queued">En file</SelectItem>
             <SelectItem value="simulated">Simulés</SelectItem>
             <SelectItem value="error">Erreurs</SelectItem>
             <SelectItem value="skipped">Ignorés</SelectItem>

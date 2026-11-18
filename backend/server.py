@@ -37,6 +37,8 @@ from routers import mailbox as mailbox_router
 from routers import appointments as appointments_router
 from routers import prospection as prospection_router
 from routers import claims as claims_router
+from routers import sms as sms_router
+from sms_outbox import run_outbox_worker
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger("clubmanager")
@@ -62,6 +64,7 @@ api.include_router(mailbox_router.router)
 api.include_router(appointments_router.router)
 api.include_router(prospection_router.router)
 api.include_router(claims_router.router)
+api.include_router(sms_router.router)
 
 
 @api.get("/")
@@ -241,6 +244,9 @@ async def startup():
         logger.info("Storage initialized.")
     except Exception as e:
         logger.warning("Storage init skipped: %s", e)
+
+    # File d'envoi des SMS inclus (passerelle SMS) : transmission + suivi des statuts
+    app.state.sms_outbox_task = asyncio.create_task(run_outbox_worker())
 
     try:
         app.state.scheduler = create_scheduler(db)
