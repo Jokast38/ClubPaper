@@ -17,6 +17,7 @@ import DrivePanel from "@/components/DrivePanel";
 import CalendarSyncPanel from "@/components/CalendarSyncPanel";
 import ReferralPanel from "@/components/ReferralPanel";
 import SmsPanel from "@/components/SmsPanel";
+import NotificationChannelsPanel from "@/components/NotificationChannelsPanel";
 
 const PLANS = [
   { id: "club", name: "Club", monthly: "19,99€", season: "79,96€", sms: "50 SMS/mois inclus", monthlyKey: "clubmanager_monthly", seasonKey: "clubmanager_season_upfront" },
@@ -214,6 +215,7 @@ export default function Settings() {
       </div>
 
       <SmsPanel />
+      <NotificationChannelsPanel />
 
       {/* Public link */}
       <div className="paper-card p-6">

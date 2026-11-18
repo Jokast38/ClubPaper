@@ -198,7 +198,8 @@ class AnnouncementCreate(BaseModel):
     title: str
     body: str
     audience: str = "all"  # all, team:<name>
-    send_email: bool = False
+    send_email: bool = False  # ancien champ : conservé pour compatibilité (= canaux par défaut du club)
+    channels: Optional[List[str]] = None  # "email", "sms", "telegram" ; None = selon send_email
 
 
 class Announcement(AnnouncementCreate):
@@ -207,6 +208,7 @@ class Announcement(AnnouncementCreate):
     club_id: str
     author_id: str
     author_name: str
+    delivery: dict = Field(default_factory=dict)  # {"email": n, "sms": n, "telegram": statut}
     created_at: datetime = Field(default_factory=_now)
 
 
@@ -295,6 +297,7 @@ class ClubIntegrations(BaseModel):
     brevo_enabled: bool = False
     telegram_bot_token: Optional[str] = ""
     telegram_chat_id: Optional[str] = ""
+    telegram_members_chat_id: Optional[str] = ""  # groupe/canal Telegram des adhérents (annonces)
     telegram_enabled: bool = False
 
 
@@ -312,6 +315,7 @@ class ClubIntegrationsPublic(BaseModel):
     brevo_sms_sender: Optional[str] = ""
     brevo_enabled: bool = False
     telegram_configured: bool = False
+    telegram_members_configured: bool = False
     telegram_enabled: bool = False
 
 

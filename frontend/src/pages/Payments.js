@@ -5,6 +5,9 @@ import { Progress } from "@/components/ui/progress";
 import { Wallet, Send, CreditCard, CheckCircle2, Zap, Download } from "lucide-react";
 import { toast } from "sonner";
 import { downloadPdf } from "@/lib/downloadPdf";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Switch } from "@/components/ui/switch";
+import ChannelPicker, { useChannels, CHANNEL_META } from "@/components/ChannelPicker";
 
 const STATUS_LABEL = { paid: "Payé", pending: "En attente", overdue: "En retard" };
 
@@ -12,6 +15,11 @@ export default function Payments() {
   const [fees, setFees] = useState([]);
   const [summary, setSummary] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [genOpen, setGenOpen] = useState(false);
+  const [notify, setNotify] = useState(true);
+  const [remindOpen, setRemindOpen] = useState(false);
+  const reqCh = useChannels("fee_request");
+  const remCh = useChannels("fee_reminder");
 
   const load = async () => {
     const [{ data: f }, { data: s }] = await Promise.all([
@@ -26,8 +34,11 @@ export default function Payments() {
   const generate = async () => {
     setBusy(true);
     try {
-      const { data } = await api.post("/fees/generate");
-      toast.success(`${data.created} cotisation${data.created > 1 ? "s" : ""} créée${data.created > 1 ? "s" : ""}`);
+      const { data } = await api.post("/fees/generate", { notify: notify && reqCh.value.length > 0, channels: reqCh.value });
+      const via = (data.channels || []).map((c) => CHANNEL_META[c].label).join(" + ");
+      toast.success(`${data.created} cotisation${data.created > 1 ? "s" : ""} créée${data.created > 1 ? "s" : ""}` +
+        (data.notified ? ` — demande de paiement envoyée (${via})` : ""));
+      setGenOpen(false);
       load();
     } catch { toast.error("Impossible de générer"); }
     finally { setBusy(false); }
@@ -50,9 +61,12 @@ export default function Payments() {
   const remindAll = async () => {
     setBusy(true);
     try {
-      const { data } = await api.post("/fees/send-all-reminders");
+      const { data } = await api.post("/fees/send-all-reminders", { channels: remCh.value });
       toast.success(`${data.sent} relance${data.sent > 1 ? "s" : ""} envoyée${data.sent > 1 ? "s" : ""}`);
-    } finally { setBusy(false); }
+      setRemindOpen(false);
+      load();
+    } catch (e) { toast.error(e.response?.data?.detail || "Impossible d'envoyer"); }
+    finally { setBusy(false); }
   };
 
   const totalDue = (summary?.pending?.amount || 0) + (summary?.overdue?.amount || 0);
@@ -68,14 +82,51 @@ export default function Payments() {
           <p className="mt-1 text-slate-600">Suivez les paiements et relancez les impayés en un clic.</p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button variant="outline" onClick={generate} disabled={busy} className="rounded-full h-11" data-testid="fees-generate-btn">
+          <Button variant="outline" onClick={() => setGenOpen(true)} disabled={busy} className="rounded-full h-11" data-testid="fees-generate-btn">
             <Zap size={18} className="mr-2" />Générer les cotisations
           </Button>
-          <Button onClick={remindAll} disabled={busy || (summary?.pending?.count || 0) === 0} className="rounded-full h-11" style={{background:"var(--club-primary)"}} data-testid="fees-remind-all-btn">
+          <Button onClick={() => setRemindOpen(true)} disabled={busy || ((summary?.pending?.count || 0) + (summary?.overdue?.count || 0)) === 0} className="rounded-full h-11" style={{background:"var(--club-primary)"}} data-testid="fees-remind-all-btn">
             <Send size={18} className="mr-2" />Tout relancer
           </Button>
         </div>
       </div>
+
+      <Dialog open={genOpen} onOpenChange={setGenOpen}>
+        <DialogContent className="max-w-lg" data-testid="fees-generate-dialog">
+          <DialogHeader><DialogTitle>Générer les cotisations de la saison</DialogTitle></DialogHeader>
+          <p className="text-sm text-slate-600">Une cotisation est créée pour chaque adhérent qui n'en a pas encore (montant personnalisé ou cotisation par défaut, échéance à 30 jours).</p>
+          <label className="flex items-center justify-between gap-3 mt-2 cursor-pointer">
+            <span className="text-sm font-medium text-slate-800">Envoyer la demande de paiement aux adhérents</span>
+            <Switch checked={notify} onCheckedChange={setNotify} data-testid="fees-generate-notify" />
+          </label>
+          {notify && (
+            <div className="mt-1">
+              <ChannelPicker value={reqCh.value} onChange={reqCh.setValue} allowed={reqCh.allowed} available={reqCh.available} testId="fees-request-channels" />
+              <p className="text-xs text-slate-500 mt-2">Chaque adhérent reçoit son lien de paiement en ligne personnel.</p>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setGenOpen(false)} className="rounded-full">Annuler</Button>
+            <Button onClick={generate} disabled={busy} className="rounded-full" style={{background:"var(--club-primary)"}} data-testid="fees-generate-confirm">
+              <Zap size={16} className="mr-2" />{busy ? "…" : "Générer"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={remindOpen} onOpenChange={setRemindOpen}>
+        <DialogContent className="max-w-lg" data-testid="fees-remind-dialog">
+          <DialogHeader><DialogTitle>Relancer toutes les cotisations impayées</DialogTitle></DialogHeader>
+          <p className="text-sm text-slate-600">{(summary?.pending?.count || 0) + (summary?.overdue?.count || 0)} cotisation(s) en attente ou en retard. Envoyer la relance par :</p>
+          <ChannelPicker value={remCh.value} onChange={remCh.setValue} allowed={remCh.allowed} available={remCh.available} testId="fees-remind-channels" />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRemindOpen(false)} className="rounded-full">Annuler</Button>
+            <Button onClick={remindAll} disabled={busy || remCh.value.length === 0} className="rounded-full" style={{background:"var(--club-primary)"}} data-testid="fees-remind-confirm">
+              <Send size={16} className="mr-2" />{busy ? "…" : "Envoyer les relances"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Summary */}
       <div className="mt-6 grid sm:grid-cols-3 gap-4 stagger">
@@ -98,7 +149,7 @@ export default function Payments() {
           <div className="w-16 h-16 mx-auto rounded-2xl bg-orange-100 text-orange-700 grid place-items-center"><Wallet size={28} strokeWidth={2.5} /></div>
           <h3 className="mt-4 font-display font-semibold text-xl text-slate-900">Aucune cotisation pour l'instant</h3>
           <p className="mt-2 text-slate-600 max-w-md mx-auto">Cliquez sur "Générer les cotisations" pour créer les cotisations de la saison pour tous vos adhérents.</p>
-          <Button onClick={generate} className="mt-6 rounded-full h-12 px-6" style={{background:"var(--club-primary)"}} data-testid="empty-generate-fees">Générer maintenant</Button>
+          <Button onClick={() => setGenOpen(true)} className="mt-6 rounded-full h-12 px-6" style={{background:"var(--club-primary)"}} data-testid="empty-generate-fees">Générer maintenant</Button>
         </div>
       ) : (
         <ul className="mt-6 space-y-3 stagger">

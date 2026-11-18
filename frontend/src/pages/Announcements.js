@@ -4,18 +4,19 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Megaphone, Plus, Send } from "lucide-react";
 import { toast } from "sonner";
 import RichTextEditor from "@/components/RichTextEditor";
 import { useAuth } from "@/lib/AuthContext";
+import ChannelPicker, { useChannels, CHANNEL_META } from "@/components/ChannelPicker";
 
 export default function Announcements() {
   const { club } = useAuth() || {};
   const [items, setItems] = useState([]);
   const [open, setOpen] = useState(false);
-  const [form, setForm] = useState({ title: "", body: "", audience: "all", send_email: true });
+  const [form, setForm] = useState({ title: "", body: "", audience: "all" });
+  const ch = useChannels("announcement");
 
   const load = async () => {
     const { data: a } = await api.get("/announcements");
@@ -29,9 +30,11 @@ export default function Announcements() {
     const stripped = (form.body || "").replace(/<[^>]*>/g, "").trim();
     if (!form.title || !stripped) { toast.error("Titre et message sont obligatoires"); return; }
     try {
-      await api.post("/announcements", form);
-      toast.success(form.send_email ? "Annonce publiée et envoyée par email" : "Annonce publiée");
-      setForm({ title: "", body: "", audience: "all", send_email: true });
+      const { data } = await api.post("/announcements", { ...form, channels: ch.value });
+      const names = (data.channels || []).map((c) => CHANNEL_META[c].label);
+      toast.success(names.length ? `Annonce publiée — envoi en cours (${names.join(", ")})` : "Annonce publiée sur l'espace du club");
+      setForm({ title: "", body: "", audience: "all" });
+      setTimeout(load, 4000);
       setOpen(false);
       load();
     } catch (err) { toast.error(err.response?.data?.detail || "Impossible de publier"); }
@@ -70,6 +73,20 @@ export default function Announcements() {
                     {a.audience !== "all" && <span className="pill-tag" style={{background:"var(--club-primary-soft)", color:"var(--club-primary)"}}>{a.audience.replace("team:", "")}</span>}
                   </div>
                   <div className="text-xs text-slate-500 mt-1">{a.author_name} · {new Date(a.created_at).toLocaleString("fr-FR")}</div>
+                  {(a.channels || []).length > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-1.5" data-testid={`announcement-delivery-${a.id}`}>
+                      {a.channels.map((c) => {
+                        const Icon = CHANNEL_META[c].icon;
+                        const d = (a.delivery || {})[c];
+                        return (
+                          <span key={c} className="pill-tag status-pending inline-flex items-center gap-1">
+                            <Icon size={11} />{CHANNEL_META[c].label}
+                            {typeof d === "number" ? ` · ${d}` : d === "sent" ? " ✓" : d === "error" ? " ✗" : ""}
+                          </span>
+                        );
+                      })}
+                    </div>
+                  )}
                   <div className="mt-3 prose prose-slate max-w-none text-slate-700" dangerouslySetInnerHTML={{ __html: a.body }} />
                 </div>
               </div>
@@ -97,10 +114,16 @@ export default function Announcements() {
                 </SelectContent>
               </Select>
             </div>
-            <label className="flex items-center gap-2 mt-2 cursor-pointer">
-              <Checkbox checked={form.send_email} onCheckedChange={(v) => setForm({...form, send_email: !!v})} data-testid="announcement-send-email" />
-              <span className="text-sm text-slate-700">Envoyer aussi par email</span>
-            </label>
+            <div>
+              <Label>Envoyer aussi par</Label>
+              <div className="mt-2">
+                <ChannelPicker value={ch.value} onChange={ch.setValue} allowed={ch.allowed} available={ch.available} testId="announcement-channels" />
+              </div>
+              <p className="text-xs text-slate-500 mt-2">
+                {ch.value.length === 0 ? "Aucun envoi : l'annonce est seulement publiée dans l'espace du club." :
+                  "Email et SMS : un message à chaque adhérent concerné (le SMS contient le titre). Telegram : publication de l'annonce complète dans le groupe des adhérents."}
+              </p>
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpen(false)} className="rounded-full">Annuler</Button>

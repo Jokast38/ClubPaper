@@ -153,6 +153,10 @@ def reminder_sms(club_name: str, member_name: str, amount: float, pay_url: str) 
     return f"{club_name}: bonjour {member_name}, cotisation de {amount:.0f}€ à régler. Paiement rapide: {pay_url}"
 
 
+def fee_request_sms(club_name: str, member_name: str, amount: float, pay_url: str) -> str:
+    return f"{club_name}: bonjour {member_name}, la cotisation de la saison est de {amount:.0f}€. Paiement en ligne: {pay_url}"
+
+
 def announcement_sms(club_name: str, title: str) -> str:
     return f"{club_name}: {title}. Consultez votre espace pour en savoir plus."
 

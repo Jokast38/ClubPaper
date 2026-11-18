@@ -14,6 +14,17 @@ from email_utils import send_email, reminder_html, referral_reward_html, referra
 from telegram_utils import notify_admins_telegram, send_club_telegram, telegram_configured
 from sms_utils import send_sms, sms_configured, format_phone, reminder_sms
 from plan_limits import check_payment_allowed
+import notify_channels as nc
+from typing import List, Optional
+from pydantic import BaseModel
+
+
+class ChannelsIn(BaseModel):
+    channels: Optional[List[str]] = None  # None = canaux par défaut du club
+
+
+class GenerateIn(ChannelsIn):
+    notify: bool = False  # envoyer la demande de cotisation aux adhérents concernés
 
 router = APIRouter(tags=["fees"])
 logger = logging.getLogger(__name__)
@@ -37,14 +48,16 @@ def _month_price(club: dict) -> int:
 
 # ---- Fees ----
 @router.post("/fees/generate")
-async def generate_fees(user: dict = Depends(current_user)):
+async def generate_fees(body: Optional[GenerateIn] = None, user: dict = Depends(current_user)):
     from datetime import timedelta
+    body = body or GenerateIn()
     db = get_db()
     club = await get_user_club(user)
     default_amt = club.get("default_fee", 150.0)
     season = club.get("season", "2025-2026")
     members = await db.members.find({"club_id": club["id"]}, {"_id": 0}).to_list(5000)
     created = 0
+    new_fees = []
     for m in members:
         exists = await db.fees.find_one({"club_id": club["id"], "member_id": m["id"], "season": season})
         if exists:
@@ -54,7 +67,24 @@ async def generate_fees(user: dict = Depends(current_user)):
         fee = Fee(club_id=club["id"], member_id=m["id"], season=season, amount=amt, due_date=due)
         await db.fees.insert_one(serialize(fee))
         created += 1
-    return {"created": created, "season": season}
+        new_fees.append((fee.model_dump(), m))
+    notified = 0
+    channels = nc.resolve(club, "fee_request", body.channels) if body.notify else []
+    if channels and new_fees:
+        if any(c == "sms" for c in channels) or len(new_fees) > 20:
+            asyncio.create_task(_send_fee_requests(club, new_fees, channels))
+            notified = len(new_fees)
+        else:
+            notified = await _send_fee_requests(club, new_fees, channels)
+    return {"created": created, "season": season, "notified": notified, "channels": channels}
+
+
+async def _send_fee_requests(club: dict, items: list, channels: list) -> int:
+    n = 0
+    for fee, member in items:
+        if await nc.send_fee_message(club, fee, member, channels, mode="request", kind="fee_request"):
+            n += 1
+    return n
 
 
 @router.get("/fees")
@@ -102,7 +132,7 @@ async def mark_paid(fee_id: str, user: dict = Depends(current_user)):
 
 
 @router.post("/fees/{fee_id}/send-reminder")
-async def send_reminder(fee_id: str, user: dict = Depends(current_user)):
+async def send_reminder(fee_id: str, body: Optional[ChannelsIn] = None, user: dict = Depends(current_user)):
     db = get_db()
     club = await get_user_club(user)
     fee = await db.fees.find_one({"id": fee_id, "club_id": club["id"]}, {"_id": 0})
@@ -111,17 +141,14 @@ async def send_reminder(fee_id: str, user: dict = Depends(current_user)):
     member = await db.members.find_one({"id": fee["member_id"]}, {"_id": 0})
     if not member:
         raise HTTPException(404, "Membre introuvable")
-    to_email = member.get("email") or member.get("parent_email")
-    if not to_email:
-        raise HTTPException(400, "Aucun email pour ce membre")
-    frontend = os.environ.get("FRONTEND_URL", "")
-    pay_url = f"{frontend}/pay/{fee['id']}"
+    channels = nc.resolve(club, "fee_reminder", (body or ChannelsIn()).channels)
+    if not channels:
+        raise HTTPException(400, "Aucun canal d'envoi disponible (email / SMS)")
+    if not (("email" in channels and nc.member_email(member)) or ("sms" in channels and member.get("phone"))):
+        raise HTTPException(400, "Ce membre n'a ni email ni téléphone pour les canaux choisis")
     level = fee.get("reminders_sent", 0) + 1
-    html = reminder_html(club["name"], f"{member['first_name']} {member['last_name']}", fee["amount"], pay_url, level)
-    result = await send_email(to_email, f"Rappel cotisation — {club['name']}", html, club_id=club["id"], kind="reminder")
-    sms_result = None
-    if sms_configured(club) and member.get("phone"):
-        sms_result = await send_sms(club, format_phone(member["phone"]), reminder_sms(club["name"], member["first_name"], fee["amount"], pay_url), kind="reminder")
+    res = await nc.send_fee_message(club, fee, member, channels, mode="reminder", level=level, kind="reminder")
+    result, sms_result = res.get("email"), res.get("sms")
     await db.fees.update_one(
         {"id": fee_id},
         {"$set": {"reminders_sent": level, "last_reminder_at": datetime.now(timezone.utc).isoformat()}},
@@ -130,25 +157,21 @@ async def send_reminder(fee_id: str, user: dict = Depends(current_user)):
 
 
 @router.post("/fees/send-all-reminders")
-async def send_all_reminders(user: dict = Depends(current_user)):
+async def send_all_reminders(body: Optional[ChannelsIn] = None, user: dict = Depends(current_user)):
     db = get_db()
     club = await get_user_club(user)
+    channels = nc.resolve(club, "fee_reminder", (body or ChannelsIn()).channels)
+    if not channels:
+        raise HTTPException(400, "Aucun canal d'envoi disponible (email / SMS)")
     fees = await db.fees.find({"club_id": club["id"], "status": {"$in": ["pending", "overdue"]}}, {"_id": 0}).to_list(5000)
     sent = 0
     for fee in fees:
         member = await db.members.find_one({"id": fee["member_id"]}, {"_id": 0})
         if not member:
             continue
-        to = member.get("email") or member.get("parent_email")
-        if not to:
-            continue
-        frontend = os.environ.get("FRONTEND_URL", "")
-        pay_url = f"{frontend}/pay/{fee['id']}"
         level = fee.get("reminders_sent", 0) + 1
-        html = reminder_html(club["name"], f"{member['first_name']} {member['last_name']}", fee["amount"], pay_url, level)
-        await send_email(to, f"Rappel cotisation — {club['name']}", html, club_id=club["id"], kind="reminder")
-        if sms_configured(club) and member.get("phone"):
-            await send_sms(club, format_phone(member["phone"]), reminder_sms(club["name"], member["first_name"], fee["amount"], pay_url), kind="reminder")
+        if not await nc.send_fee_message(club, fee, member, channels, mode="reminder", level=level, kind="reminder"):
+            continue  # ni email ni téléphone pour les canaux choisis
         await db.fees.update_one(
             {"id": fee["id"]},
             {"$set": {"reminders_sent": level, "last_reminder_at": datetime.now(timezone.utc).isoformat()}},

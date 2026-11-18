@@ -168,6 +168,8 @@ def _integrations_public(raw: dict) -> dict:
         "brevo_sms_sender": raw.get("brevo_sms_sender", ""),
         "brevo_enabled": bool(raw.get("brevo_enabled")),
         "telegram_configured": bool(raw.get("telegram_bot_token") and raw.get("telegram_chat_id")),
+        "telegram_members_configured": bool(raw.get("telegram_bot_token") and raw.get("telegram_members_chat_id")),
+        "telegram_members_chat_id": raw.get("telegram_members_chat_id", ""),
         "telegram_enabled": bool(raw.get("telegram_enabled")),
     }
 

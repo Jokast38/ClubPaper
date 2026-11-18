@@ -44,6 +44,29 @@ def _get_club_creds(club: dict):
     return bot_token, chat_id, enabled
 
 
+def _members_chat(club: dict) -> str:
+    return (((club or {}).get("integrations") or {}).get("telegram_members_chat_id") or "").strip()
+
+
+def telegram_members_configured(club: dict) -> bool:
+    """Groupe/canal Telegram des adhérents configuré (même bot que les notifications du bureau)."""
+    bot_token, _chat, enabled = _get_club_creds(club)
+    return bool(enabled and bot_token and _members_chat(club))
+
+
+async def send_members_telegram(club: dict, text: str, *, kind: str = "") -> dict:
+    """Publie dans le groupe/canal Telegram des adhérents. Never raises."""
+    club_id = (club or {}).get("id", "")
+    bot_token, _chat, enabled = _get_club_creds(club)
+    chat_id = _members_chat(club)
+    if not (enabled and bot_token and chat_id):
+        await log_notification(channel="telegram", status="skipped", to=chat_id, subject=text[:80], club_id=club_id, kind=kind, error="canal adhérents non configuré")
+        return {"status": "skipped", "reason": "not configured"}
+    result = await send_telegram_message(bot_token, chat_id, text)
+    await log_notification(channel="telegram", status=result["status"], to=chat_id, subject=text[:80], club_id=club_id, kind=kind, error=result.get("error", ""))
+    return result
+
+
 def telegram_configured(club: dict) -> bool:
     bot_token, chat_id, enabled = _get_club_creds(club)
     return bool(enabled and bot_token and chat_id)

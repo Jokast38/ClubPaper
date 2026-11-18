@@ -7,6 +7,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from email_utils import send_email, reminder_html, trial_reminder_html, trial_ended_html, callback_summary_html, appointment_reminder_html
 from sms_utils import send_sms, sms_configured, format_phone, reminder_sms
 from telegram_utils import notify_admin_telegram
+import notify_channels as nc
 
 logger = logging.getLogger("scheduler")
 
@@ -37,14 +38,9 @@ async def run_fee_reminders(db):
             club = await db.clubs.find_one({"id": fee["club_id"]}, {"_id": 0})
             if not member or not club:
                 continue
-            to = member.get("email") or member.get("parent_email")
-            if not to:
+            channels = nc.resolve(club, "fee_reminder")
+            if not await nc.send_fee_message(club, fee, member, channels, mode="reminder", level=level, kind="reminder_auto"):
                 continue
-            pay_url = f"{frontend}/pay/{fee['id']}"
-            html = reminder_html(club["name"], f"{member['first_name']} {member['last_name']}", fee["amount"], pay_url, level)
-            await send_email(to, f"Rappel cotisation — {club['name']}", html, club_id=club["id"], kind="reminder_auto")
-            if sms_configured(club) and member.get("phone"):
-                await send_sms(club, format_phone(member["phone"]), reminder_sms(club["name"], member["first_name"], fee["amount"], pay_url), kind="reminder_auto")
             new_status = "overdue" if level >= 3 else fee["status"]
             await db.fees.update_one(
                 {"id": fee["id"]},
@@ -81,13 +77,16 @@ async def run_season_reminders(db):
             days_to = (target - now).total_seconds() / 86400
             if 0 < days_to <= 30:
                 subject, body = _season_message(club, kind, target)
+                channels = nc.resolve(club, "season")
                 members = await db.members.find({"club_id": club["id"]}, {"_id": 0}).to_list(10000)
+                sms_text = (f"{club['name']}: la saison se termine le {target.strftime('%d/%m/%Y')}. Merci pour cette belle saison !"
+                            if kind == "end" else
+                            f"{club['name']}: les inscriptions pour la nouvelle saison ouvrent le {target.strftime('%d/%m/%Y')}.")
                 for m in members:
-                    to = m.get("email") or m.get("parent_email")
-                    if not to:
-                        continue
-                    await send_email(to, subject, body, club_id=club["id"], kind=f"season_{kind}")
-                    total += 1
+                    if await nc.notify_member(club, m, channels, subject=subject, email_html=body,
+                                              sms_text=sms_text, kind=f"season_{kind}"):
+                        total += 1
+                await nc.post_telegram(club, channels, f"📢 <b>{club['name']}</b>\n{sms_text.split(': ', 1)[1]}", f"season_{kind}")
                 await db.clubs.update_one({"id": club["id"]}, {"$set": {f"season_settings.{flag}": True}})
     if total:
         logger.info("Sent %d season reminders", total)

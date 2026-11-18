@@ -12,6 +12,7 @@ from telegram_utils import send_club_telegram, telegram_configured
 from sanitizer import sanitize_html
 from routers.gcal import sync_session_upsert, sync_session_delete
 from plan_limits import check_announcement_limit
+import notify_channels as nc
 
 router = APIRouter(tags=["activity"])
 logger = logging.getLogger(__name__)
@@ -68,19 +69,19 @@ async def _notify_session_change(club: dict, session: dict, action: str):
         if session.get("team"):
             query["team"] = session["team"]
         members = await db.members.find(query, {"_id": 0}).to_list(5000)
-        sms_ok = sms_configured(club)
+        channels = nc.resolve(club, "session_change")
         when = f"{session.get('start_at','')}"
+        html = session_change_html(
+            club["name"], f"{session['title']} ({action})",
+            f"{session.get('start_at','')} → {session.get('end_at','')}",
+            session.get("place", ""), session.get("notes", ""),
+        )
         for m in members:
-            to = m.get("email") or m.get("parent_email")
-            if to:
-                html = session_change_html(
-                    club["name"], f"{session['title']} ({action})",
-                    f"{session.get('start_at','')} → {session.get('end_at','')}",
-                    session.get("place", ""), session.get("notes", ""),
-                )
-                await send_email(to, f"{club['name']} — Créneau {action}", html, club_id=club["id"], kind="session_change")
-            if sms_ok and m.get("phone"):
-                await send_sms(club, format_phone(m["phone"]), session_change_sms(club["name"], session["title"], when), kind="session_change")
+            await nc.notify_member(club, m, channels, subject=f"{club['name']} — Créneau {action}", email_html=html,
+                                   sms_text=session_change_sms(club["name"], session["title"], when), kind="session_change")
+        await nc.post_telegram(club, channels, f"📅 <b>{club['name']}</b> — créneau {action} : {session['title']}\n"
+                               f"{session.get('start_at','')} → {session.get('end_at','')}"
+                               + (f"\n📍 {session.get('place')}" if session.get("place") else ""), "session_change")
         if telegram_configured(club):
             await send_club_telegram(club, f"📅 Créneau {action}: {session['title']}\n{session.get('start_at','')} → {session.get('end_at','')}", kind="session_change")
     except Exception as e:
@@ -104,25 +105,57 @@ async def create_announcement(data: AnnouncementCreate, user: dict = Depends(cur
         **payload, club_id=club["id"],
         author_id=user["id"], author_name=user.get("name", "Bureau"),
     )
+    # Canaux : ceux cochés dans le formulaire, sinon (ancien client) les défauts du club si send_email
+    requested = data.channels if data.channels is not None else (None if data.send_email else [])
+    channels = nc.resolve(club, "announcement", requested)
+    a.channels = channels
     await get_db().announcements.insert_one(serialize(a))
-    if data.send_email:
-        asyncio.create_task(_broadcast_announcement(club, a))
+    if channels:
+        asyncio.create_task(_broadcast_announcement(club, a, channels))
     return a.model_dump()
 
 
-async def _broadcast_announcement(club: dict, a: Announcement):
+@router.get("/notification-channels")
+async def get_notification_channels(user: dict = Depends(current_user)):
+    return nc.channels_view(await get_user_club(user))
+
+
+@router.put("/notification-channels")
+async def set_notification_channels(data: dict, user: dict = Depends(current_user)):
+    """Canaux par défaut par type de message : {"announcement": ["email", "sms"], ...}."""
+    club = await get_user_club(user)
+    clean = {}
+    for kind, chans in (data or {}).items():
+        if kind in nc.KINDS and isinstance(chans, list):
+            clean[kind] = [c for c in nc.CHANNELS if c in chans and c in nc.KINDS[kind]["allowed"]]
+    current = club.get("notification_channels") or {}
+    current.update(clean)
+    await get_db().clubs.update_one({"id": club["id"]}, {"$set": {"notification_channels": current}})
+    club["notification_channels"] = current
+    return nc.channels_view(club)
+
+
+async def _broadcast_announcement(club: dict, a: Announcement, channels: list):
     db = get_db()
     query = {"club_id": club["id"]}
     if a.audience.startswith("team:"):
         query["team"] = a.audience[5:]
     members = await db.members.find(query, {"_id": 0}).to_list(5000)
-    sms_ok = sms_configured(club)
+    html = announcement_html(club["name"], a.title, a.body)
+    counts = {"email": 0, "sms": 0}
     for m in members:
-        to = m.get("email") or m.get("parent_email")
-        if to:
-            html = announcement_html(club["name"], a.title, a.body)
-            await send_email(to, f"{club['name']} — {a.title}", html, club_id=club["id"], kind="announcement")
-        if sms_ok and m.get("phone"):
-            await send_sms(club, format_phone(m["phone"]), announcement_sms(club["name"], a.title), kind="announcement")
-    if telegram_configured(club):
+        res = await nc.notify_member(club, m, channels, subject=f"{club['name']} — {a.title}", email_html=html,
+                                     sms_text=announcement_sms(club["name"], a.title), kind="announcement")
+        for ch, status in res.items():
+            if status in ("sent", "queued", "simulated"):
+                counts[ch] += 1
+    delivery = {k: v for k, v in counts.items() if k in channels}
+    team = f" ({a.audience[5:]})" if a.audience.startswith("team:") else ""
+    tg = await nc.post_telegram(club, channels, f"📣 <b>{club['name']}{team}</b>\n<b>{a.title}</b>\n\n"
+                                + nc.html_to_text(a.body).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"),
+                                "announcement")
+    if tg:
+        delivery["telegram"] = tg
+    await db.announcements.update_one({"id": a.id}, {"$set": {"delivery": delivery}})
+    if telegram_configured(club) and "telegram" not in channels:
         await send_club_telegram(club, f"📣 Nouvelle annonce: {a.title}", kind="announcement")

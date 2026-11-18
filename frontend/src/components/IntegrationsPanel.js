@@ -34,6 +34,7 @@ export default function IntegrationsPanel() {
       brevo_enabled: data.brevo_enabled,
       telegram_bot_token: "",
       telegram_chat_id: "",
+      telegram_members_chat_id: data.telegram_members_chat_id || "",
       telegram_enabled: data.telegram_enabled,
     });
   };
@@ -155,14 +156,15 @@ export default function IntegrationsPanel() {
 
       <IntegrationCard
         icon={MessageSquare}
-        title="Telegram — Notifications du bureau"
+        title="Telegram — Bureau et adhérents"
         configured={status.telegram_configured}
         enabled={form.telegram_enabled}
         onToggle={(v) => setForm({...form, telegram_enabled: v})}
         testId="int-telegram"
       >
         <div><Label>Jeton du bot</Label><Input type="password" placeholder={status.telegram_configured ? "•••••••••• (configuré)" : "123456:ABC-..."} value={form.telegram_bot_token} onChange={(e) => setForm({...form, telegram_bot_token: e.target.value})} data-testid="telegram-token-input" className="mt-1 h-11" /></div>
-        <div><Label>Identifiant du chat</Label><Input placeholder="123456789" value={form.telegram_chat_id} onChange={(e) => setForm({...form, telegram_chat_id: e.target.value})} data-testid="telegram-chatid-input" className="mt-1 h-11" /></div>
+        <div><Label>Identifiant du chat du bureau</Label><Input placeholder="123456789" value={form.telegram_chat_id} onChange={(e) => setForm({...form, telegram_chat_id: e.target.value})} data-testid="telegram-chatid-input" className="mt-1 h-11" /></div>
+        <div className="sm:col-span-2"><Label>Groupe ou canal des adhérents (annonces)</Label><Input placeholder="@moncluboff ou -100123456789" value={form.telegram_members_chat_id} onChange={(e) => setForm({...form, telegram_members_chat_id: e.target.value})} data-testid="telegram-members-chat-input" className="mt-1 h-11" /><div className="text-xs text-slate-500 mt-1">Optionnel : ajoutez le même bot comme administrateur du groupe ou du canal Telegram de vos adhérents pour y publier les annonces et changements de créneau.</div></div>
         <div className="sm:col-span-2 text-xs text-slate-500">
           Créez un bot gratuit avec <strong>@BotFather</strong> sur Telegram pour obtenir le jeton, puis ajoutez ce bot au groupe de votre bureau et récupérez l'identifiant du chat avec <strong>@userinfobot</strong> (ou l'API <code>getUpdates</code> du bot).
         </div>

@@ -486,6 +486,23 @@ def reminder_html(club_name: str, member_name: str, amount: float, pay_url: str,
 """
 
 
+def fee_request_html(club_name: str, member_name: str, amount: float, pay_url: str, due_date: str = "") -> str:
+    due = f" avant le <strong>{due_date}</strong>" if due_date else ""
+    return f"""
+<div style="font-family: -apple-system, sans-serif; max-width: 560px; margin: 0 auto; padding: 24px; color: #0f172a;">
+  <h2 style="color: #ea580c; margin: 0 0 12px;">Cotisation de la saison — {club_name}</h2>
+  <p>Bonjour {member_name},</p>
+  <p>La cotisation de la nouvelle saison s'élève à <strong>{amount:.2f} €</strong>. Merci de la régler{due}.</p>
+  <p>Le paiement en ligne est sécurisé et ne prend que quelques secondes :</p>
+  <p style="text-align: center; margin: 24px 0;">
+    <a href="{pay_url}" style="background: #ea580c; color: white; padding: 14px 28px; text-decoration: none; border-radius: 12px; font-weight: 600;">Payer ma cotisation</a>
+  </p>
+  <p style="color: #64748b; font-size: 14px;">Vous pouvez aussi régler directement auprès du bureau.</p>
+  <p style="color: #64748b; font-size: 14px;">L'équipe de {club_name}</p>
+</div>
+"""
+
+
 def announcement_html(club_name: str, title: str, body: str) -> str:
     return f"""
 <div style="font-family: -apple-system, sans-serif; max-width: 560px; margin: 0 auto; padding: 24px; color: #0f172a;">
