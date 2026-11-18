@@ -8,7 +8,7 @@ const features = [
   "Cotisations & paiements en ligne (Stripe)",
   "Relances automatiques par email et SMS",
   "Planning multi-équipes avec notifications",
-  "Annonces à toute la club ou à une équipe",
+  "Annonces à tout le club ou à une équipe",
   "Landing page publique aux couleurs du club",
   "Tableau de bord trésorier",
   "Support par email",
@@ -50,7 +50,7 @@ export default function Pricing() {
                 <span className="text-5xl font-display font-bold text-orange-600">{p.price}</span>
                 <span className="text-slate-500">/ mois par club</span>
               </div>
-              <p className="mt-2 text-sm text-slate-600">ou {p.season} la saison payée en une fois (2 mois offerts)</p>
+              <p className="mt-2 text-sm text-slate-600">Engagement 1 saison (6 mois) — ou {p.season} la saison payée en une fois (2 mois offerts)</p>
 
               <ul className="mt-8 space-y-3 flex-1">
                 {[...features, ...p.extras].map((f) => (
@@ -71,6 +71,9 @@ export default function Pricing() {
         </div>
 
         <p className="mt-10 text-sm text-slate-600">
+          Pas prêt à vous engager ? Après l'essai, un <b>plan gratuit</b> reste disponible sans engagement : 25 adhérents, 2 annonces par mois, sans paiement en ligne ni SMS.
+        </p>
+        <p className="mt-3 text-sm text-slate-600">
           Plus de SMS ? Connectez votre propre compte <b>Twilio</b> ou <b>Brevo</b> pour des envois illimités, ou contactez-nous pour un partenariat (ligues, tournois, clubs multi-sections).
         </p>
         <p className="mt-3 text-sm text-slate-500">Besoin d'une facture au nom de votre association ? Nous vous l'envoyons automatiquement.</p>

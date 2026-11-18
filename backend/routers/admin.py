@@ -29,6 +29,11 @@ router = APIRouter(prefix="/admin", tags=["admin"])
 logger = logging.getLogger(__name__)
 
 MONTHLY_PRICE_EUR = 19.99
+PRO_MONTHLY_PRICE_EUR = 29.99
+
+
+def _club_mrr(club: dict) -> float:
+    return PRO_MONTHLY_PRICE_EUR if club.get("plan_tier") == "pro" else MONTHLY_PRICE_EUR
 
 
 @router.get("/stats")
@@ -43,13 +48,14 @@ async def stats(user: dict = Depends(platform_admin_user)):
     past_due_clubs = await db.clubs.count_documents({"subscription_status": "past_due"})
     free_clubs = await db.clubs.count_documents({"plan": "free"})
     paid_clubs = await db.clubs.count_documents({"plan": "paid"})
-    mrr = active_clubs * MONTHLY_PRICE_EUR
+    pro_active = await db.clubs.count_documents({"subscription_status": "active", "plan_tier": "pro"})
+    mrr = round((active_clubs - pro_active) * MONTHLY_PRICE_EUR + pro_active * PRO_MONTHLY_PRICE_EUR, 2)
 
     # Signups + estimated cumulative MRR per month, last 12 months.
     since = datetime.now(timezone.utc) - timedelta(days=365)
     clubs = await db.clubs.find(
         {"created_at": {"$gte": since.isoformat()}},
-        {"_id": 0, "created_at": 1, "subscription_status": 1},
+        {"_id": 0, "created_at": 1, "subscription_status": 1, "plan_tier": 1},
     ).to_list(5000)
 
     months = []
@@ -60,7 +66,7 @@ async def stats(user: dict = Depends(platform_admin_user)):
         cursor = (cursor.replace(day=28) + timedelta(days=4)).replace(day=1)
 
     signups_by_month = {m: 0 for m in months}
-    active_by_month = {m: 0 for m in months}
+    active_by_month = {m: 0.0 for m in months}
     for c in clubs:
         try:
             created = c["created_at"][:7]
@@ -71,10 +77,10 @@ async def stats(user: dict = Depends(platform_admin_user)):
         if c.get("subscription_status") == "active":
             for m in months:
                 if m >= created:
-                    active_by_month[m] += 1
+                    active_by_month[m] += _club_mrr(c)
 
     chart = [
-        {"month": m, "signups": signups_by_month[m], "estimated_mrr": round(active_by_month[m] * MONTHLY_PRICE_EUR, 2)}
+        {"month": m, "signups": signups_by_month[m], "estimated_mrr": round(active_by_month[m], 2)}
         for m in months
     ]
 
