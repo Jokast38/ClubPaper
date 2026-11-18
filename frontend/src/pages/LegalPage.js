@@ -7,13 +7,15 @@ const DOCS = {
     sections: [
       {
         h: "Éditeur du site",
-        body: `ClubPaper est édité par [Nom de la société / auto-entrepreneur], [forme juridique], au capital de [montant] €,
-immatriculée au RCS de [ville] sous le numéro [SIREN/SIRET], dont le siège social est situé [adresse complète].
-Numéro de TVA intracommunautaire : [numéro].
-Directeur de la publication : [nom].
-Contact : [email de contact].`,
+        body: `ClubPaper est édité par Jokast René Marie Claret Kassa, entrepreneur individuel, immatriculé au Registre National des Entreprises (RNE) sous le numéro SIREN 107 062 481 (SIRET 107 062 481 00018).
+Conformément à l'article A123-96-1 du code de commerce, l'entrepreneur individuel peut déclarer ne pas rendre publique son adresse personnelle ; celle-ci peut être communiquée sur demande légitime auprès des autorités compétentes.
+Directeur de la publication : Jokast Kassa.
+Contact : contact@clubpaper.fr.`,
       },
-      { h: "Hébergement", body: `Le site est hébergé par [nom de l'hébergeur, ex. Render / Vercel], [adresse de l'hébergeur].` },
+      { h: "Hébergement", body: `Le site (frontend et backend applicatif) est hébergé par Render, exploité par Render Services, Inc.
+Site web : https://render.com — Contact : support@render.com.
+La base de données et le stockage de fichiers sont hébergés par Supabase, exploité par Supabase Pte. Ltd., 65 Chulia Street #38-02/03, OCBC Centre, Singapour 049513.
+Site web : https://supabase.com — Contact : privacy@supabase.com.` },
       { h: "Propriété intellectuelle", body: `L'ensemble des contenus présents sur ce site (textes, logos, éléments graphiques) est la propriété de ClubPaper, sauf mention contraire, et ne peut être reproduit sans autorisation préalable.` },
     ],
   },
@@ -33,7 +35,7 @@ Contact : [email de contact].`,
     sections: [
       {
         h: "Responsable du traitement",
-        body: `Le responsable du traitement des données personnelles collectées sur ClubPaper est [Nom de la société], joignable à [email de contact], conformément au Règlement Général sur la Protection des Données (RGPD — Règlement UE 2016/679) et à la loi Informatique et Libertés, sous le contrôle de la CNIL.`,
+        body: `Le responsable du traitement des données personnelles collectées sur ClubPaper est Jokast Kassa (entrepreneur individuel), joignable à contact@clubpaper.fr, conformément au Règlement Général sur la Protection des Données (RGPD — Règlement UE 2016/679) et à la loi Informatique et Libertés, sous le contrôle de la CNIL.`,
       },
       {
         h: "Données collectées",
@@ -49,7 +51,7 @@ Contact : [email de contact].`,
       },
       {
         h: "Sous-traitants et intégrations tierces",
-        body: `Selon les intégrations activées par le club, des données peuvent être transmises à : Stripe (paiement), Resend (email), Twilio (SMS), Google (Drive, Agenda, connexion) — chacun sous sa propre politique de confidentialité et dans la limite des autorisations accordées par le club.`,
+        body: `Les données sont hébergées chez Render (application) et Supabase (base de données). Selon les intégrations activées par le club, des données peuvent également être transmises à : Stripe (paiement), Resend (email), Twilio (SMS), Google (Drive, Agenda, connexion) — chacun sous sa propre politique de confidentialité et dans la limite des autorisations accordées par le club.`,
       },
       {
         h: "Durée de conservation",
@@ -57,7 +59,7 @@ Contact : [email de contact].`,
       },
       {
         h: "Vos droits",
-        body: `Conformément au RGPD, vous disposez d'un droit d'accès, de rectification, d'effacement, de limitation, d'opposition et de portabilité de vos données. Pour l'exercer, contactez [email de contact]. Vous pouvez également introduire une réclamation auprès de la CNIL (www.cnil.fr).`,
+        body: `Conformément au RGPD, vous disposez d'un droit d'accès, de rectification, d'effacement, de limitation, d'opposition et de portabilité de vos données. Pour l'exercer, contactez contact@clubpaper.fr. Vous pouvez également introduire une réclamation auprès de la CNIL (www.cnil.fr).`,
       },
       {
         h: "Cookies",
@@ -86,9 +88,6 @@ export default function LegalPage() {
             </section>
           ))}
         </div>
-        <p className="mt-12 text-xs text-slate-400">
-          Document type à adapter avec les informations réelles de votre structure avant mise en production.
-        </p>
       </div>
     </div>
   );
