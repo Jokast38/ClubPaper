@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Phone, Search, Upload, Mail, Send, ChevronLeft, ChevronRight, UserCircle2, Users as UsersIcon, Sparkles, Trash2, Flame, ShieldOff, Clock, Pencil, X, Check, CalendarPlus, Building2 } from "lucide-react";
+import { Phone, Search, Upload, Mail, Send, ChevronLeft, ChevronRight, UserCircle2, Users as UsersIcon, Sparkles, Trash2, Flame, ShieldOff, Clock, Pencil, X, Check, CalendarPlus, Building2, Eye } from "lucide-react";
 import { toast } from "sonner";
 
 const STATUS_LABEL = {
@@ -108,6 +108,15 @@ export default function LeadsWorkspace() {
       next.has(id) ? next.delete(id) : next.add(id);
       return next;
     });
+  };
+
+  const [campaignPreview, setCampaignPreview] = useState(null);
+  const previewCampaign = async () => {
+    const leadId = selected.size > 0 ? Array.from(selected)[0] : "";
+    try {
+      const { data } = await api.get("/admin/leads/campaign-preview", { params: { lead_id: leadId } });
+      setCampaignPreview(data.html);
+    } catch { toast.error("Impossible de charger l'aperçu"); }
   };
 
   const sendCampaign = async () => {
@@ -245,8 +254,13 @@ export default function LeadsWorkspace() {
             <label className="flex items-center gap-2 text-sm text-slate-600">
               <input type="checkbox" checked={assignedToMe} onChange={(e) => setAssignedToMe(e.target.checked)} />Mes leads
             </label>
+            {user?.is_platform_admin && (
+              <Button size="sm" variant="outline" className="rounded-full ml-auto" onClick={previewCampaign} data-testid="leads-preview-campaign-btn">
+                <Eye size={14} className="mr-1.5" />Aperçu de l'email
+              </Button>
+            )}
             {selected.size > 0 && user?.is_platform_admin && (
-              <div className="flex gap-2 ml-auto">
+              <div className="flex gap-2">
                 <Button size="sm" variant="outline" className="rounded-full" onClick={enrichSelected} disabled={enriching} data-testid="leads-enrich-btn">
                   <Sparkles size={14} className="mr-1.5" />{enriching ? "Enrichissement…" : `Enrichir (${selected.size})`}
                 </Button>
@@ -357,6 +371,22 @@ export default function LeadsWorkspace() {
       )}
 
       <LeadDetailDialog lead={detail} onOpenChange={(v) => !v && setDetail(null)} onSaved={() => { setDetail(null); load(); loadCallbacks(); }} onActivityLogged={loadCallbacks} />
+
+      <Dialog open={!!campaignPreview} onOpenChange={(v) => !v && setCampaignPreview(null)}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Aperçu de l'email de campagne</DialogTitle>
+          </DialogHeader>
+          {campaignPreview && (
+            <iframe
+              title="Aperçu de l'email de campagne"
+              srcDoc={campaignPreview}
+              className="w-full h-[70vh] border border-slate-200 rounded-lg bg-white"
+              data-testid="leads-campaign-preview-iframe"
+            />
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -943,6 +943,22 @@ async def enrich_leads(payload: dict, user: dict = Depends(platform_admin_user))
     return {"enriched": enriched, "unchanged": unchanged, "errors": errors}
 
 
+@router.get("/leads/campaign-preview")
+async def preview_lead_campaign(lead_id: str = "", user: dict = Depends(platform_admin_user)):
+    """Render the prospecting email template as-is, so an admin can check its
+    content from the leads UI before sending it to real leads."""
+    db = get_db()
+    lead_name = "Club Exemple"
+    if lead_id:
+        lead = await db.leads.find_one({"id": lead_id}, {"_id": 0})
+        if lead:
+            lead_name = lead["name"]
+    landing_url = frontend_url() or "https://clubpaper.fr"
+    unsubscribe_url = f"{landing_url}/api/public/leads/{lead_id or 'exemple'}/desinscription"
+    html = lead_campaign_html(lead_name, landing_url, user.get("name", ""), unsubscribe_url)
+    return {"html": html}
+
+
 @router.post("/leads/campaign")
 async def send_lead_campaign(payload: dict, user: dict = Depends(platform_admin_user)):
     """Send the prospecting email to a batch of leads that have an email address."""
